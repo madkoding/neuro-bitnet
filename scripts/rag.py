@@ -154,6 +154,36 @@ class WebSearcher:
             "User-Agent": "Mozilla/5.0 (compatible; neuro-bitnet RAG/1.0)"
         }
     
+    def _extract_search_terms(self, query: str) -> List[str]:
+        """Extrae términos de búsqueda de una pregunta"""
+        # Palabras a ignorar (stop words básicos)
+        stop_words = {
+            'qué', 'que', 'quién', 'quien', 'cuál', 'cual', 'cuáles', 'cómo', 'como',
+            'dónde', 'donde', 'cuándo', 'cuando', 'por', 'qué', 'para',
+            'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+            'de', 'del', 'al', 'a', 'en', 'con', 'es', 'son', 'fue', 'era',
+            'y', 'o', 'pero', 'si', 'no', 'se', 'su', 'sus',
+            'what', 'who', 'which', 'where', 'when', 'how', 'why',
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'of', 'to', 'in', 'for'
+        }
+        
+        # Limpiar query
+        clean = query.lower()
+        clean = ''.join(c if c.isalnum() or c.isspace() else ' ' for c in clean)
+        words = [w for w in clean.split() if w not in stop_words and len(w) > 2]
+        
+        # Devolver términos individuales y combinaciones
+        terms = []
+        if words:
+            # El término completo (palabras clave juntas)
+            terms.append(' '.join(words))
+            # Términos individuales importantes (capitalizados para Wikipedia)
+            for word in words:
+                if len(word) > 3:
+                    terms.append(word.capitalize())
+        
+        return terms[:3]  # Máximo 3 búsquedas
+    
     def search_duckduckgo(self, query: str, max_results: int = 3) -> List[Dict]:
         """Busca usando DuckDuckGo Instant Answer API (sin API key)"""
         try:
@@ -191,24 +221,46 @@ class WebSearcher:
             print(f"⚠️ Error en DuckDuckGo: {e}")
             return []
     
-    def search_wikipedia(self, query: str, lang: str = "es") -> Optional[Dict]:
-        """Busca en Wikipedia"""
+    def search_wikipedia(self, query: str, lang: str = "es", _from_search: bool = False) -> Optional[Dict]:
+        """Busca en Wikipedia usando la API de búsqueda"""
         try:
             import requests
             from urllib.parse import quote_plus
             
+            # Primero intentar búsqueda directa por título
             url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote_plus(query)}"
             response = requests.get(url, headers=self.headers, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("extract"):
+                if data.get("extract") and data.get("type") != "disambiguation":
                     return {
                         "title": data.get("title", query),
                         "content": data["extract"],
                         "source": data.get("content_urls", {}).get("desktop", {}).get("page", "Wikipedia"),
                         "type": "wikipedia"
                     }
+            
+            # Si no encuentra y no venimos de una búsqueda previa, buscar con la API
+            if not _from_search:
+                search_url = f"https://{lang}.wikipedia.org/w/api.php"
+                params = {
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": 1
+                }
+                response = requests.get(search_url, params=params, headers=self.headers, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    search_results = data.get("query", {}).get("search", [])
+                    if search_results:
+                        # Obtener el resumen del primer resultado (con flag para evitar recursión)
+                        title = search_results[0]["title"]
+                        return self.search_wikipedia(title, lang, _from_search=True)
+            
             return None
             
         except Exception as e:
@@ -216,17 +268,30 @@ class WebSearcher:
             return None
     
     def search(self, query: str, max_results: int = 3) -> List[Dict]:
-        """Búsqueda combinada (Wikipedia primero, luego DuckDuckGo)"""
+        """Búsqueda combinada inteligente"""
         results = []
+        seen_content = set()
         
-        # Wikipedia primero (más confiable)
-        wiki = self.search_wikipedia(query)
-        if wiki:
-            results.append(wiki)
+        # Extraer términos de búsqueda
+        search_terms = self._extract_search_terms(query)
         
-        # Complementar con DuckDuckGo
-        ddg = self.search_duckduckgo(query, max_results - len(results))
-        results.extend(ddg)
+        # Buscar con cada término
+        for term in search_terms:
+            # Wikipedia primero (más confiable)
+            wiki = self.search_wikipedia(term)
+            if wiki and wiki["content"] not in seen_content:
+                results.append(wiki)
+                seen_content.add(wiki["content"])
+                if len(results) >= max_results:
+                    break
+        
+        # Complementar con DuckDuckGo si necesitamos más
+        if len(results) < max_results:
+            ddg = self.search_duckduckgo(query, max_results - len(results))
+            for r in ddg:
+                if r["content"] not in seen_content:
+                    results.append(r)
+                    seen_content.add(r["content"])
         
         return results[:max_results]
 
@@ -630,11 +695,14 @@ class LLMClient:
         self.base_url = base_url.rstrip("/")
     
     def chat(self, messages: List[Dict], max_tokens: int = 512, 
-             temperature: float = 0.7) -> str:
-        """Envía mensaje al LLM"""
+             temperature: float = 0.7, stream: bool = False) -> str:
+        """Envía mensaje al LLM (con o sin streaming)"""
         import requests
         
         try:
+            if stream:
+                return self._chat_stream(messages, max_tokens, temperature)
+            
             response = requests.post(
                 f"{self.base_url}/v1/chat/completions",
                 json={
@@ -654,6 +722,83 @@ class LLMClient:
         except Exception as e:
             raise ConnectionError(f"Error con el LLM: {e}")
     
+    def _chat_stream(self, messages: List[Dict], max_tokens: int, 
+                     temperature: float) -> str:
+        """Chat con streaming - imprime tokens en tiempo real"""
+        import requests
+        
+        response = requests.post(
+            f"{self.base_url}/v1/chat/completions",
+            json={
+                "model": "bitnet",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True
+            },
+            stream=True,
+            timeout=300  # Más tiempo para streaming
+        )
+        response.raise_for_status()
+        
+        full_content = ""
+        for line in response.iter_lines():
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith('data: '):
+                    data = line[6:]
+                    if data == '[DONE]':
+                        break
+                    try:
+                        import json
+                        chunk = json.loads(data)
+                        delta = chunk.get('choices', [{}])[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            print(content, end='', flush=True)
+                            full_content += content
+                    except json.JSONDecodeError:
+                        pass
+        
+        print()  # Nueva línea al final
+        return full_content
+    
+    def chat_stream_generator(self, messages: List[Dict], max_tokens: int = 512,
+                              temperature: float = 0.7):
+        """Generador que yield tokens para uso programático"""
+        import requests
+        
+        response = requests.post(
+            f"{self.base_url}/v1/chat/completions",
+            json={
+                "model": "bitnet",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True
+            },
+            stream=True,
+            timeout=300
+        )
+        response.raise_for_status()
+        
+        for line in response.iter_lines():
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith('data: '):
+                    data = line[6:]
+                    if data == '[DONE]':
+                        break
+                    try:
+                        import json
+                        chunk = json.loads(data)
+                        delta = chunk.get('choices', [{}])[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        pass
+    
     def is_available(self) -> bool:
         """Verifica si el LLM está disponible"""
         import requests
@@ -665,12 +810,133 @@ class LLMClient:
 
 
 # ============================================================================
+# Detector de Incertidumbre
+# ============================================================================
+
+class UncertaintyDetector:
+    """
+    Detecta cuando el LLM no sabe algo basándose en patrones de respuesta.
+    
+    Estrategias:
+    1. Frases de incertidumbre ("no sé", "no tengo información", etc.)
+    2. Respuestas muy cortas o evasivas
+    3. Repetición de la pregunta sin respuesta
+    """
+    
+    # Frases que indican incertidumbre (español e inglés)
+    UNCERTAINTY_PATTERNS = [
+        # Español
+        "no sé", "no lo sé", "no tengo información", "no tengo esa información",
+        "no estoy seguro", "no estoy segura", "no puedo decir", "no dispongo",
+        "no tengo datos", "no tengo conocimiento", "desconozco", "no conozco",
+        "no tengo acceso", "sin información", "no hay información",
+        "fuera de mi conocimiento", "no me es posible", "no cuento con",
+        "no tengo la respuesta", "no puedo responder", "no puedo afirmar",
+        "más allá de mi", "no está en el contexto", "no aparece en",
+        "no encuentro", "no he encontrado", "no se menciona",
+        # English
+        "i don't know", "i do not know", "i'm not sure", "i am not sure",
+        "i don't have information", "i cannot say", "i can't say",
+        "not in my knowledge", "beyond my knowledge", "no information available",
+        "i'm unable to", "i cannot find", "not mentioned", "no data",
+    ]
+    
+    # Frases de evasión
+    EVASION_PATTERNS = [
+        "depende de", "es complicado", "es difícil decir", "habría que ver",
+        "no es fácil", "puede variar", "sería necesario", "debería consultar",
+        "it depends", "hard to say", "difficult to say",
+    ]
+    
+    def __init__(self, 
+                 confidence_threshold: float = 0.75,
+                 min_response_length: int = 15):
+        """
+        Args:
+            confidence_threshold: Si la confianza es menor a este valor, se considera incierto
+            min_response_length: Longitud mínima de respuesta (si es menor, es sospechosa)
+        """
+        self.confidence_threshold = confidence_threshold
+        self.min_response_length = min_response_length
+    
+    def analyze(self, response: str, question: str = "") -> Dict[str, Any]:
+        """
+        Analiza una respuesta y determina si el modelo está seguro.
+        
+        Returns:
+            {
+                "is_uncertain": bool,
+                "confidence": float,  # 0-1, 1 = muy seguro
+                "reasons": List[str],
+                "patterns_found": List[str]
+            }
+        """
+        response_lower = response.lower().strip()
+        reasons = []
+        patterns_found = []
+        confidence = 1.0
+        
+        # 1. Detectar frases de incertidumbre (penaliza fuerte)
+        for pattern in self.UNCERTAINTY_PATTERNS:
+            if pattern in response_lower:
+                patterns_found.append(pattern)
+                confidence -= 0.35  # Mayor penalización
+        
+        if patterns_found:
+            reasons.append(f"Frases de incertidumbre: {', '.join(patterns_found[:3])}")
+        
+        # 2. Detectar evasiones
+        evasions_found = []
+        for pattern in self.EVASION_PATTERNS:
+            if pattern in response_lower:
+                evasions_found.append(pattern)
+                confidence -= 0.2
+        
+        if evasions_found:
+            reasons.append(f"Evasiones detectadas: {', '.join(evasions_found[:2])}")
+        
+        # 3. Respuesta muy corta
+        if len(response_lower) < self.min_response_length:
+            confidence -= 0.3
+            reasons.append(f"Respuesta muy corta ({len(response_lower)} caracteres)")
+        
+        # 4. Repetición de la pregunta sin respuesta clara
+        if question:
+            question_words = set(question.lower().split())
+            response_words = set(response_lower.split())
+            overlap = len(question_words & response_words) / max(len(question_words), 1)
+            if overlap > 0.6 and len(response_lower) < 80:
+                confidence -= 0.25
+                reasons.append("Repite la pregunta sin respuesta clara")
+        
+        # 5. Signos de interrogación en respuesta (responde con pregunta)
+        if response.count('?') > 1:
+            confidence -= 0.15
+            reasons.append("Responde con preguntas")
+        
+        # Normalizar confianza
+        confidence = max(0.0, min(1.0, confidence))
+        is_uncertain = confidence < self.confidence_threshold
+        
+        return {
+            "is_uncertain": is_uncertain,
+            "confidence": confidence,
+            "reasons": reasons,
+            "patterns_found": patterns_found
+        }
+    
+    def is_uncertain(self, response: str, question: str = "") -> bool:
+        """Versión simplificada que solo retorna True/False"""
+        return self.analyze(response, question)["is_uncertain"]
+
+
+# ============================================================================
 # RAG System Principal
 # ============================================================================
 
 class RAGSystem:
     """
-    Sistema RAG flexible.
+    Sistema RAG flexible con detección de incertidumbre.
     
     Modo simple (default):
         - Backend: archivos locales
@@ -682,6 +948,7 @@ class RAGSystem:
         - Auto-learn desde web
         - Memoria de conversaciones
         - Multi-usuario
+        - Detección de incertidumbre con reintento automático
     """
     
     def __init__(self,
@@ -711,6 +978,9 @@ class RAGSystem:
         
         # LLM
         self.llm = LLMClient(llm_url)
+        
+        # Detector de incertidumbre (siempre activo si auto_learn)
+        self.uncertainty_detector = UncertaintyDetector() if auto_learn else None
         
         # Web searcher (solo si auto_learn está activo)
         self.web_searcher = WebSearcher() if auto_learn else None
@@ -823,12 +1093,21 @@ class RAGSystem:
         
         return doc_ids
     
-    def query(self, question: str, min_confidence: float = 0.5) -> str:
+    def query(self, question: str, min_confidence: float = 0.5, stream: bool = False,
+              max_retries: int = 2) -> str:
         """
-        Consulta RAG completa:
+        Consulta RAG completa con detección de incertidumbre:
         1. Busca en documentos locales
         2. Si auto_learn y no hay info suficiente, busca en web
         3. Genera respuesta con LLM
+        4. Si auto_learn y detecta incertidumbre, busca en web y reintenta (máx N veces)
+        5. Si sigue sin saber, responde honestamente "no sé"
+        
+        Args:
+            question: Pregunta del usuario
+            min_confidence: Score mínimo para considerar contexto válido
+            stream: Si True, imprime tokens en tiempo real
+            max_retries: Máximo de reintentos por incertidumbre (default: 2)
         """
         # 1. Buscar documentos
         results = self.search(question, top_k=3)
@@ -841,7 +1120,63 @@ class RAGSystem:
             self.learn_from_web(question)
             results = self.search(question, top_k=3)
         
-        # 3. Construir contexto
+        # 3. Generar respuesta inicial
+        response = self._generate_response(question, results, stream)
+        
+        # 4. Detectar incertidumbre y reintentar si es necesario (con límite)
+        retries = 0
+        still_uncertain = False
+        
+        while (self.auto_learn and self.uncertainty_detector and not stream 
+               and retries < max_retries):
+            
+            analysis = self.uncertainty_detector.analyze(response, question)
+            
+            if not analysis["is_uncertain"]:
+                still_uncertain = False
+                break  # Respuesta segura, salir del loop
+            
+            still_uncertain = True
+            retries += 1
+            print(f"🤔 Incertidumbre detectada (confianza: {analysis['confidence']:.0%}) - Intento {retries}/{max_retries}")
+            for reason in analysis["reasons"]:
+                print(f"   → {reason}")
+            
+            print("🌐 Buscando más información en la web...")
+            new_docs = self.learn_from_web(question)
+            
+            if not new_docs:
+                print("⚠️ No se encontró información adicional")
+                break  # No hay más info, no tiene sentido reintentar
+            
+            results = self.search(question, top_k=5)  # Más resultados
+            
+            print("🔄 Reintentando con nuevo conocimiento...")
+            response = self._generate_response(question, results, stream)
+            
+            # Verificar si el último intento sigue siendo incierto
+            if retries == max_retries:
+                final_analysis = self.uncertainty_detector.analyze(response, question)
+                still_uncertain = final_analysis["is_uncertain"]
+        
+        # 5. Si después de todos los intentos sigue sin saber, ser honesto
+        if still_uncertain and self.auto_learn:
+            response = f"No sé la respuesta a esa pregunta. Busqué información pero no encontré datos confiables sobre: {question}"
+        
+        # 6. Guardar conversación si está activo
+        if self.save_conversations:
+            self.add(
+                content=f"P: {question}\nR: {response}",
+                source="conversation",
+                metadata={"type": "qa"}
+            )
+        
+        return response
+    
+    def _generate_response(self, question: str, results: List[SearchResult], 
+                          stream: bool = False) -> str:
+        """Genera respuesta usando el LLM con el contexto dado"""
+        # Construir contexto
         if results:
             context_parts = []
             for r in results:
@@ -851,17 +1186,17 @@ class RAGSystem:
         else:
             context = "No hay información disponible sobre este tema."
         
-        # 4. Verificar LLM
+        # Verificar LLM
         if not self.llm.is_available():
             return f"⚠️ LLM no disponible.\n\nContexto encontrado:\n{context}"
         
-        # 5. Generar respuesta
+        # Generar respuesta
         messages = [
             {
                 "role": "system",
                 "content": """Eres un asistente con acceso a una base de conocimientos.
 Responde ÚNICAMENTE usando la información del contexto.
-Si no está en el contexto, di que no tienes esa información.
+Si no está en el contexto, di claramente "No tengo información sobre esto".
 Sé conciso y preciso."""
             },
             {
@@ -875,17 +1210,7 @@ Responde basándote en el contexto:"""
             }
         ]
         
-        response = self.llm.chat(messages, max_tokens=512, temperature=0.3)
-        
-        # 6. Guardar conversación si está activo
-        if self.save_conversations:
-            self.add(
-                content=f"P: {question}\nR: {response}",
-                source="conversation",
-                metadata={"type": "qa"}
-            )
-        
-        return response
+        return self.llm.chat(messages, max_tokens=512, temperature=0.3, stream=stream)
     
     def list(self, limit: int = 50) -> List[Document]:
         """Lista documentos"""
@@ -951,6 +1276,8 @@ Variables de entorno:
                         help="Buscar en web cuando no hay información")
     parser.add_argument("--save-conversations", action="store_true",
                         help="Guardar conversaciones como documentos")
+    parser.add_argument("--stream", "-s", action="store_true",
+                        help="Usar streaming para respuestas (evita timeouts)")
     
     # Subcomandos
     subparsers = parser.add_subparsers(dest="command", help="Comandos")
@@ -1038,9 +1365,13 @@ Variables de entorno:
         print(f"✅ Archivo agregado: {len(doc_ids)} chunks")
     
     elif args.command == "query":
-        print("🤔 Procesando...\n")
-        response = rag.query(args.question)
-        print(f"💬 {response}")
+        if args.stream:
+            print("🤖 ", end="", flush=True)
+            response = rag.query(args.question, stream=True)
+        else:
+            print("🤔 Procesando...\n")
+            response = rag.query(args.question, stream=False)
+            print(f"💬 {response}")
     
     elif args.command == "learn":
         doc_ids = rag.learn_from_web(args.topic)
@@ -1095,7 +1426,7 @@ Variables de entorno:
             print("❌ Cancelado")
     
     elif args.command == "interactive":
-        print("💬 Modo interactivo")
+        print("💬 Modo interactivo (streaming activado)")
         print("   Comandos: /add <texto>, /learn <tema>, /search <query>")
         print("             /stats, /clear, /help, salir")
         print()
@@ -1151,10 +1482,10 @@ Variables de entorno:
                 print("  salir          - Salir\n")
                 continue
             
-            # Consulta normal
-            print("🤔 Pensando...")
-            response = rag.query(user_input)
-            print(f"\n🤖 {response}\n")
+            # Consulta normal con streaming
+            print("🤖 ", end="", flush=True)
+            response = rag.query(user_input, stream=True)
+            print()  # Línea extra después de la respuesta
 
 
 if __name__ == "__main__":

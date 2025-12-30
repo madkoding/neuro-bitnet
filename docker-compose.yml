@@ -9,15 +9,15 @@ services:
   bitnet:
     container_name: neuro-bitnet
     # Usar imagen pre-construida de Docker Hub
-    # Modelos disponibles: falcon-7b (default), bitnet-2b
-    image: madkoding/neuro-bitnet:${BITNET_MODEL:-falcon-7b}
+    # Modelos disponibles: bitnet-2b (default), falcon-7b
+    image: madkoding/neuro-bitnet:${BITNET_MODEL:-bitnet-2b}
     
     # Para build local, descomentar:
     # build:
     #   context: .
     #   dockerfile: Dockerfile
     #   args:
-    #     MODEL_VARIANT: ${BITNET_MODEL:-falcon-7b}
+    #     MODEL_VARIANT: ${BITNET_MODEL:-bitnet-2b}
     
     # GPU NVIDIA
     runtime: nvidia

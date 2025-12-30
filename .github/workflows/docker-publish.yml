@@ -90,12 +90,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Tag falcon-7b as latest
+      - name: Tag bitnet-2b as latest
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-7b
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-7b ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bitnet-2b
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bitnet-2b ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ Tagged falcon-7b as latest"
+          echo "✅ Tagged bitnet-2b as latest"
 
   # NOTA: La descripción de Docker Hub se debe actualizar manualmente
   # La acción peter-evans/dockerhub-description requiere un token con permisos especiales

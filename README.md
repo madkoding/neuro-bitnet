@@ -4,16 +4,16 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/madkoding/neuro-bitnet?logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/madkoding/neuro-bitnet/docker-publish.yml?label=Build&logo=github)](https://github.com/madkoding/neuro-bitnet/actions)
 
-Docker container para modelos **BitNet 1.58-bit** con soporte GPU, API compatible con OpenAI y sistema **RAG** integrado.
+Docker container para modelos **BitNet 1.58-bit** con API compatible con OpenAI y sistema **RAG** integrado.
 
 ## 📦 Modelos Disponibles
 
 ### Modelos de Generación (LLM)
 
-| Modelo | Tag Docker | Tamaño | VRAM | Calidad | Velocidad |
-|--------|------------|--------|------|---------|----------|
-| **Falcon3-7B-Instruct** | `falcon-7b` (default) | ~5 GB | ~2 GB | ⭐⭐⭐⭐ | Moderada |
-| **BitNet-b1.58-2B-4T** | `bitnet-2b` | ~4 GB | ~800 MB | ⭐⭐⭐ | ⚡⚡⚡ Rápida |
+| Modelo | Tag Docker | Tamaño | Calidad | Velocidad |
+|--------|------------|--------|---------|----------|
+| **BitNet-b1.58-2B-4T** | `bitnet-2b` (default) | ~4 GB | ⭐⭐⭐ | ⚡⚡⚡ Rápida |
+| **Falcon3-7B-Instruct** | `falcon-7b` | ~5 GB | ⭐⭐⭐⭐ | Moderada |
 
 ### Modelos de Embeddings (RAG)
 
@@ -294,6 +294,53 @@ curl http://localhost:11435/v1/completions \
   }'
 ```
 
+### Streaming (Server-Sent Events)
+
+Para respuestas largas, usa **streaming** para evitar timeouts y ver tokens en tiempo real:
+
+```bash
+curl -N http://localhost:11435/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "bitnet",
+    "messages": [{"role": "user", "content": "Explica qué es Docker"}],
+    "stream": true,
+    "max_tokens": 500
+  }'
+```
+
+**Formato de respuesta SSE:**
+```
+data: {"choices":[{"delta":{"content":"Docker"}}]}
+data: {"choices":[{"delta":{"content":" es"}}]}
+data: {"choices":[{"delta":{"content":" una"}}]}
+...
+data: [DONE]
+```
+
+**En Python:**
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:11435/v1/chat/completions",
+    json={
+        "model": "bitnet",
+        "messages": [{"role": "user", "content": "Hola"}],
+        "stream": True
+    },
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line and line.startswith(b"data: "):
+        data = line[6:]
+        if data != b"[DONE]":
+            chunk = json.loads(data)
+            content = chunk["choices"][0]["delta"].get("content", "")
+            print(content, end="", flush=True)
+```
+
 
 ## 🔍 Sistema RAG (Retrieval-Augmented Generation)
 
@@ -323,10 +370,10 @@ pip install surrealdb
 python3 scripts/rag.py add "Python fue creado por Guido van Rossum"
 python3 scripts/rag.py add-file documentacion.txt
 
-# Consultar
-python3 scripts/rag.py query "¿Quién creó Python?"
+# Consultar (con streaming para ver tokens en tiempo real)
+python3 scripts/rag.py --stream query "¿Quién creó Python?"
 
-# Modo interactivo
+# Modo interactivo (streaming activado por defecto)
 python3 scripts/rag.py interactive
 
 # Administrar
@@ -362,6 +409,30 @@ python3 scripts/rag.py learn "Machine Learning"
 # Con auto-learn, lo hace automáticamente si no tiene info
 python3 scripts/rag.py --auto-learn query "¿Quién fundó SpaceX?"
 ```
+
+### Detección de Incertidumbre
+
+Cuando `--auto-learn` está activo, el sistema detecta automáticamente cuando el modelo "no sabe" algo:
+
+```bash
+# Si el modelo responde con "no sé", busca en web y reintenta (máx 2 veces)
+python3 scripts/rag.py --auto-learn query "¿Cuál es la capital de Francia?"
+
+# Ejemplo de flujo:
+# 1. Pregunta → modelo responde "no tengo información"
+# 2. Sistema detecta incertidumbre (confianza: 65%)
+# 3. Busca en Wikipedia "Francia"
+# 4. Guarda el conocimiento
+# 5. Reintenta → "La capital de Francia es París"
+```
+
+**Patrones de incertidumbre detectados:**
+- "no sé", "no tengo información", "desconozco"
+- "no estoy seguro", "no puedo decir"
+- Respuestas muy cortas
+- Evasiones como "depende de..."
+
+Si después de reintentar sigue sin saber, responde honestamente: *"No sé la respuesta a esa pregunta."*
 
 ### Modelos de Embeddings
 
@@ -410,9 +481,7 @@ python3 scripts/rag.py -e bge query "..."
 | `BITNET_EXTERNAL_PORT` | `11435` | Puerto externo del servidor |
 | `BITNET_CTX_SIZE` | `4096` | Tamaño de contexto (tokens) |
 | `BITNET_PARALLEL` | `4` | Slots para requests paralelos |
-| `BITNET_GPU_LAYERS` | `99` | Capas en GPU (0=solo CPU) |
 | `BITNET_THREADS` | `4` | Threads CPU |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU a utilizar |
 | `HF_TOKEN` | - | Token HuggingFace (opcional) |
 
 ### Distribución de Contexto Recomendada (4096 tokens)
@@ -437,9 +506,7 @@ python3 scripts/rag.py -e bge query "..."
 
 2. **Idioma**: Principalmente entrenados en inglés. Otros idiomas pueden tener calidad reducida.
 
-3. **GPU Experimental**: El soporte GPU en bitnet.cpp es experimental. Si tienes problemas, usa `BITNET_GPU_LAYERS=0` para modo CPU.
-
-4. **Contexto Largo**: Los modelos fueron entrenados con 4096 tokens máximo. Contextos más largos degradan calidad.
+3. **Contexto Largo**: Los modelos fueron entrenados con 4096 tokens máximo. Contextos más largos degradan calidad.
 
 ## 📊 Monitoreo
 
