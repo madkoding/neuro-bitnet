@@ -26,193 +26,166 @@ Docker container para modelos **BitNet 1.58-bit** con soporte GPU, API compatibl
 
 ## 🏗️ Arquitectura
 
-El sistema usa **dos modelos separados** que trabajan en conjunto, con soporte para **múltiples backends** y **multi-usuario**:
+### Flujo General
+
+```mermaid
+flowchart LR
+    U["👤 Usuario"] --> RAG["🧠 RAG"]
+    RAG --> E["📊 Embeddings<br/>MiniLM"]
+    E --> S["💾 Storage"]
+    S --> RAG
+    RAG --> LLM["🦅 Falcon-7B"]
+    LLM --> U
+```
+
+### Backends de Almacenamiento
+
+El sistema soporta **dos backends**. Por defecto usa archivos locales (simple), pero puede escalar a SurrealDB (avanzado):
 
 ```mermaid
 flowchart TB
-    subgraph Clients["🖥️ Clientes"]
-        U1["👤 Usuario A"]
-        U2["👤 Usuario B"]
-        U3["👤 Usuario C"]
+    subgraph Simple["📁 Backend: Archivos (Default)"]
+        direction LR
+        F1["~/.neuro-bitnet/rag/"]
+        F2["├── usuario_a/"]
+        F3["│   ├── documents.json"]
+        F4["│   └── embeddings.npy"]
+        F5["├── usuario_b/"]
+        F6["└── default/"]
     end
     
-    subgraph RAG["🧠 Sistema RAG"]
-        direction TB
-        Embed[("📊 MiniLM<br/>Embeddings")]
-        
-        subgraph Backend["💾 Backend Storage"]
-            direction LR
-            Files["📁 Archivos<br/>(Default)"]
-            Surreal["🗄️ SurrealDB<br/>(Avanzado)"]
-        end
+    subgraph Avanzado["🗄️ Backend: SurrealDB (Opcional)"]
+        direction LR
+        S1["Puerto :8000"]
+        S2["Índices MTREE"]
+        S3["Millones de docs"]
+        S4["Multi-usuario nativo"]
     end
-    
-    subgraph FileStore["📁 ~/.neuro-bitnet/rag/"]
-        direction TB
-        UA["👤 user_a/<br/>├─ documents.json<br/>└─ embeddings.npy"]
-        UB["👤 user_b/<br/>├─ documents.json<br/>└─ embeddings.npy"]
-        UD["👤 default/<br/>├─ documents.json<br/>└─ embeddings.npy"]
-    end
-    
-    subgraph SurrealStore["🗄️ SurrealDB :8000"]
-        direction TB
-        NS["namespace: rag<br/>database: neurobitnet"]
-        IDX["🔍 MTREE Index<br/>Cosine Similarity"]
-        TBL["📋 documents<br/>├─ user_id<br/>├─ content<br/>├─ embedding[]<br/>└─ source"]
-    end
-    
-    subgraph LLM["🤖 LLM Server :11435"]
-        Falcon[("🦅 Falcon-7B<br/>o BitNet-2B")]
-    end
-    
-    U1 & U2 & U3 --> RAG
-    RAG --> Embed
-    Embed --> Backend
-    Files -.->|"--backend files"| FileStore
-    Surreal -.->|"--backend surrealdb"| SurrealStore
-    RAG --> Falcon
-    Falcon --> Clients
 ```
 
-### Diagrama de Secuencia: Modo Simple vs Avanzado
+| Característica | 📁 Archivos | 🗄️ SurrealDB |
+|---------------|-------------|--------------|
+| Instalación | Ninguna | `docker compose --profile rag up` |
+| Escalabilidad | ~10K docs | Millones |
+| Velocidad búsqueda | O(n) lineal | O(log n) índices |
+| Multi-usuario | Directorios | Filtro SQL |
+| Uso | `--backend files` | `--backend surrealdb` |
+
+### Sistema Multi-Usuario
+
+Cada usuario tiene su espacio **aislado**:
+
+```mermaid
+flowchart LR
+    subgraph Usuarios
+        U1["👤 --user juan"]
+        U2["👤 --user maria"]
+        U3["👤 (default)"]
+    end
+    
+    subgraph Archivos["📁 Archivos"]
+        D1["juan/"]
+        D2["maria/"]
+        D3["default/"]
+    end
+    
+    subgraph SurrealDB["🗄️ SurrealDB"]
+        Q["WHERE user_id = ?"]
+    end
+    
+    U1 --> D1
+    U2 --> D2
+    U3 --> D3
+    
+    U1 --> Q
+    U2 --> Q
+    U3 --> Q
+```
+
+### Diagrama de Secuencia: Consulta RAG
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant U as 👤 Usuario
-    participant RAG as 🧠 RAG System
-    participant ML as 📊 MiniLM
-    participant FS as 📁 FileBackend<br/>(Default)
-    participant SD as 🗄️ SurrealDB<br/>(Avanzado)
-    participant WEB as 🌐 Web Search
-    participant LLM as 🦅 Falcon-7B
+    participant RAG as 🧠 RAG
+    participant E as 📊 Embeddings
+    participant S as 💾 Storage
+    participant LLM as 🦅 LLM
 
-    Note over U,LLM: 🔷 MODO SIMPLE (--backend files)
-    
-    U->>RAG: --user juan add "Python fue creado..."
-    RAG->>ML: encode(texto)
-    ML-->>RAG: vector [384 dims]
-    RAG->>FS: save(~/.neuro-bitnet/rag/juan/)
-    FS-->>RAG: ✓ documents.json + embeddings.npy
-
-    U->>RAG: --user juan query "¿Quién creó Python?"
-    RAG->>ML: encode(query)
-    RAG->>FS: search(vector, user=juan)
-    FS-->>RAG: docs similares
-    RAG->>LLM: prompt + contexto
+    U->>RAG: query("¿Quién creó Python?")
+    RAG->>E: encode(pregunta)
+    E-->>RAG: vector [384 dims]
+    RAG->>S: buscar similares
+    S-->>RAG: documentos + scores
+    RAG->>LLM: pregunta + contexto
     LLM-->>U: "Guido van Rossum"
-
-    Note over U,LLM: 🔶 MODO AVANZADO (--backend surrealdb --auto-learn)
-
-    U->>RAG: --user maria query "¿Qué es Kubernetes?"
-    RAG->>ML: encode(query)
-    RAG->>SD: SELECT * FROM documents<br/>WHERE user_id = 'maria'<br/>ORDER BY vector::similarity
-    SD-->>RAG: ❌ score < 0.5 (sin info)
-    
-    rect rgb(255, 250, 230)
-        Note over RAG,WEB: Auto-learn activado
-        RAG->>WEB: search("Kubernetes")
-        WEB-->>RAG: Wikipedia + DuckDuckGo results
-        RAG->>ML: encode(web_content)
-        RAG->>SD: INSERT documents {user_id: 'maria', source: 'web', ...}
-    end
-    
-    RAG->>SD: search(vector, user=maria)
-    SD-->>RAG: docs aprendidos
-    RAG->>LLM: prompt + contexto web
-    LLM-->>U: "Kubernetes es un orquestador de contenedores..."
-
-    Note over U,LLM: 🔷 MEMORIA DE CONVERSACIONES (--save-conversations)
-    
-    RAG->>SD: INSERT documents {<br/>  user_id: 'maria',<br/>  source: 'conversation',<br/>  content: 'P: ¿Qué es K8s? R: ...'<br/>}
 ```
 
-### Arquitectura Multi-Usuario
+### Diagrama de Secuencia: Auto-Learn (Opcional)
+
+Cuando `--auto-learn` está activo y no hay información suficiente:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 Usuario
+    participant RAG as 🧠 RAG
+    participant S as 💾 Storage
+    participant W as 🌐 Web
+    participant LLM as 🦅 LLM
+
+    U->>RAG: query("¿Qué es Kubernetes?")
+    RAG->>S: buscar similares
+    S-->>RAG: ❌ score < 0.5
+    
+    rect rgb(255, 250, 230)
+        Note over RAG,W: Auto-learn
+        RAG->>W: buscar en Wikipedia + DuckDuckGo
+        W-->>RAG: resultados web
+        RAG->>S: guardar como source:"web"
+    end
+    
+    RAG->>S: buscar de nuevo
+    S-->>RAG: ✅ docs aprendidos
+    RAG->>LLM: pregunta + contexto
+    LLM-->>U: respuesta
+```
+
+### Componentes del Sistema
 
 ```mermaid
 flowchart TB
-    subgraph Users["👥 Usuarios"]
-        UA["👤 Juan<br/>--user juan"]
-        UB["👤 María<br/>--user maria"]
-        UC["👤 Default<br/>(sin --user)"]
+    subgraph Cliente["🖥️ Cliente"]
+        CLI["python rag.py"]
     end
     
-    subgraph RAG["🧠 RAG System"]
-        Router{{"🔀 Router<br/>por user_id"}}
+    subgraph Embeddings["📊 Modelos Embeddings"]
+        M1["MiniLM (80MB)"]
+        M2["MPNet (420MB)"]
+        M3["E5 (1.2GB)"]
+        M4["BGE (1.3GB)"]
     end
     
-    subgraph FileBackend["📁 Backend: Archivos (Default)"]
-        direction TB
-        FA["~/rag/juan/<br/>🔒 Aislado"]
-        FB["~/rag/maria/<br/>🔒 Aislado"]
-        FC["~/rag/default/<br/>🔒 Aislado"]
+    subgraph Storage["💾 Almacenamiento"]
+        Files["📁 Archivos"]
+        Surreal["🗄️ SurrealDB"]
     end
     
-    subgraph SurrealBackend["🗄️ Backend: SurrealDB (Avanzado)"]
-        direction TB
-        DB[("🗄️ neurobitnet.rag")]
-        Q1["SELECT WHERE user_id='juan'"]
-        Q2["SELECT WHERE user_id='maria'"]
-        Q3["SELECT WHERE user_id='default'"]
+    subgraph LLM["🤖 LLM Server :11435"]
+        Falcon["🦅 Falcon-7B"]
+        BitNet["⚡ BitNet-2B"]
     end
     
-    UA --> Router
-    UB --> Router
-    UC --> Router
-    
-    Router -->|"files"| FileBackend
-    Router -->|"surrealdb"| SurrealBackend
-    
-    FA -.-> |"Docs de Juan"| FA
-    FB -.-> |"Docs de María"| FB
-    FC -.-> |"Docs compartidos"| FC
-    
-    DB --> Q1 & Q2 & Q3
-```
-
-### Flujo de Datos por Backend
-
-```mermaid
-flowchart LR
-    subgraph Input["📥 Entrada"]
-        Q["Pregunta + user_id"]
+    subgraph WebSearch["🌐 Web (Opcional)"]
+        Wiki["Wikipedia"]
+        DDG["DuckDuckGo"]
     end
     
-    subgraph Embeddings["📊 Embeddings"]
-        ML["MiniLM/MPNet/E5/BGE"]
-    end
-    
-    Decision{"🔀 Backend?"}
-    
-    subgraph Files["📁 Archivos"]
-        direction TB
-        F1["documents.json"]
-        F2["embeddings.npy"]
-        F3["np.dot() cosine"]
-    end
-    
-    subgraph Surreal["🗄️ SurrealDB"]
-        direction TB
-        S1["MTREE Index"]
-        S2["vector::similarity::cosine()"]
-        S3["Escalable a millones"]
-    end
-    
-    subgraph LLM["🦅 LLM"]
-        GEN["Generación"]
-    end
-    
-    subgraph Output["📤 Salida"]
-        R["Respuesta"]
-    end
-    
-    Q --> ML
-    ML --> Decision
-    Decision -->|"Simple<br/>~10K docs"| Files
-    Decision -->|"Avanzado<br/>Millones"| Surreal
-    Files --> GEN
-    Surreal --> GEN
-    GEN --> R
+    CLI --> Embeddings
+    Embeddings --> Storage
+    Storage --> LLM
+    WebSearch -.->|"--auto-learn"| Storage
 ```
 
 ## 🚀 Inicio Rápido
