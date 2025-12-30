@@ -2,6 +2,7 @@
 title: Arquitectura
 icon: fas fa-sitemap
 order: 3
+mermaid: true
 ---
 
 # Arquitectura del Sistema

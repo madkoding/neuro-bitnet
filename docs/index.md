@@ -2,6 +2,7 @@
 layout: page
 icon: fas fa-home
 title: neuro-bitnet
+mermaid: true
 ---
 
 <div style="text-align: center; margin-bottom: 2rem;">

@@ -1,0 +1,46 @@
+/* Custom styles that extend Chirpy theme */
+
+/* Fix code blocks - preserve whitespace and add padding */
+div.highlighter-rouge,
+div.highlight {
+  padding: 0 !important;
+}
+
+div.highlighter-rouge pre,
+div.highlight pre {
+  padding: 1rem !important;
+  margin: 0 !important;
+  overflow-x: auto !important;
+}
+
+pre, code {
+  font-family: 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 
+               'Roboto Mono', 'Source Code Pro', 'Menlo', 'Consolas', 
+               'Liberation Mono', 'Courier New', monospace !important;
+  white-space: pre !important;
+  word-wrap: normal !important;
+}
+
+pre {
+  padding: 1rem !important;
+  line-height: 1.5 !important;
+  border-radius: 0.5rem !important;
+}
+
+pre code {
+  white-space: pre !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+/* Ensure line breaks are preserved in code */
+.highlight pre,
+.highlighter-rouge pre {
+  white-space: pre !important;
+}
+
+.highlight code,
+.highlighter-rouge code {
+  white-space: pre !important;
+  display: block !important;
+}
