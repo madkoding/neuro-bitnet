@@ -15,23 +15,22 @@ El servidor RAG expone una API REST en el puerto configurado (default: 8080).
 Realizar una consulta inteligente con clasificación automática.
 
 **Request:**
-```json
-{
+
+<pre><code class="language-json">{
   "query": "¿Cuál es la capital de Francia?",
   "user_id": "default",
   "include_sources": true
-}
-```
+}</code></pre>
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "answer": "La capital de Francia es París.",
   "sources": [
     {
       "source": "rag",
       "score": 0.92,
-      "content": "Francia es un país europeo con capital en París..."
+      "content": "Francia es un país europeo..."
     }
   ],
   "classification": {
@@ -45,8 +44,7 @@ Realizar una consulta inteligente con clasificación automática.
     "search_ms": 45,
     "llm_ms": 100
   }
-}
-```
+}</code></pre>
 
 ---
 
@@ -55,21 +53,19 @@ Realizar una consulta inteligente con clasificación automática.
 Clasificar una consulta sin ejecutarla.
 
 **Request:**
-```json
-{
+
+<pre><code class="language-json">{
   "query": "calcula 2 + 2"
-}
-```
+}</code></pre>
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "category": "math",
   "strategy": "llm_direct",
   "confidence": 0.95,
-  "reasons": ["Patrón matemático detectado: \\d+\\s*\\+\\s*\\d+"]
-}
-```
+  "reasons": ["Patrón matemático detectado"]
+}</code></pre>
 
 ---
 
@@ -78,26 +74,24 @@ Clasificar una consulta sin ejecutarla.
 Añadir un documento al índice RAG.
 
 **Request:**
-```json
-{
-  "content": "Python es un lenguaje de programación de alto nivel.",
+
+<pre><code class="language-json">{
+  "content": "Python es un lenguaje de programación.",
   "source": "manual",
   "user_id": "default",
   "metadata": {
     "topic": "programming",
     "language": "es"
   }
-}
-```
+}</code></pre>
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "id": "a1b2c3d4e5f6",
   "status": "indexed",
   "embedding_model": "minilm"
-}
-```
+}</code></pre>
 
 ---
 
@@ -106,30 +100,30 @@ Añadir un documento al índice RAG.
 Buscar documentos similares.
 
 **Request:**
-```json
-{
+
+<pre><code class="language-json">{
   "query": "programación en Python",
   "user_id": "default",
   "top_k": 5,
   "min_score": 0.5
-}
-```
+}</code></pre>
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "results": [
     {
       "id": "a1b2c3d4e5f6",
-      "content": "Python es un lenguaje de programación de alto nivel.",
+      "content": "Python es un lenguaje...",
       "source": "manual",
       "score": 0.87,
-      "metadata": {"topic": "programming"}
+      "metadata": {
+        "topic": "programming"
+      }
     }
   ],
   "total": 1
-}
-```
+}</code></pre>
 
 ---
 
@@ -138,15 +132,14 @@ Buscar documentos similares.
 Verificar estado del servidor.
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "status": "healthy",
   "version": "1.0.0",
   "llm_available": true,
   "embedding_model": "minilm",
   "documents_count": 42
-}
-```
+}</code></pre>
 
 ---
 
@@ -155,16 +148,15 @@ Verificar estado del servidor.
 Obtener estadísticas del servidor.
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "storage_type": "file",
   "total_documents": 150,
   "embedding_model": "minilm",
   "embedding_dimensions": 384,
   "uptime_seconds": 3600,
   "queries_processed": 500
-}
-```
+}</code></pre>
 
 ---
 
@@ -173,13 +165,16 @@ Obtener estadísticas del servidor.
 Listar documentos indexados.
 
 **Query Parameters:**
-- `user_id` (string, default: "default")
-- `limit` (int, default: 50)
-- `offset` (int, default: 0)
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `user_id` | string | "default" | ID del usuario |
+| `limit` | int | 50 | Máximo de resultados |
+| `offset` | int | 0 | Desplazamiento |
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "documents": [
     {
       "id": "a1b2c3d4e5f6",
@@ -191,8 +186,7 @@ Listar documentos indexados.
   "total": 150,
   "limit": 50,
   "offset": 0
-}
-```
+}</code></pre>
 
 ---
 
@@ -201,12 +195,11 @@ Listar documentos indexados.
 Eliminar un documento.
 
 **Response:**
-```json
-{
+
+<pre><code class="language-json">{
   "status": "deleted",
   "id": "a1b2c3d4e5f6"
-}
-```
+}</code></pre>
 
 ## Códigos de Error
 

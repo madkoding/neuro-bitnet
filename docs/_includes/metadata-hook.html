@@ -11,7 +11,6 @@ div.highlighter-rouge pre,
 div.highlight pre,
 figure.highlight pre,
 pre {
-  padding: 1rem 1.25rem !important;
   margin: 0 !important;
   overflow-x: auto !important;
   white-space: pre !important;
@@ -19,16 +18,15 @@ pre {
   line-height: 1.5 !important;
 }
 
-pre code,
-code {
+/* Padding inside highlight code */
+.highlight code,
+.highlighter-rouge code,
+pre code {
+  display: block !important;
+  padding: 10px !important;
   white-space: pre !important;
   word-break: normal !important;
   overflow-wrap: normal !important;
-}
-
-pre code {
-  display: block !important;
-  padding: 0 !important;
 }
 
 /* Inline code keeps normal wrapping */
