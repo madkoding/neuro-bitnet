@@ -1,0 +1,97 @@
+# =============================================================================
+# neuro-bitnet Docker Compose Override (Ejemplo)
+# =============================================================================
+#
+# Este archivo es una PLANTILLA para personalizar el docker-compose.yml
+# 
+# Para usar:
+#   1. Copia este archivo a docker-compose.override.yml
+#   2. Modifica según tus necesidades
+#   3. Docker Compose automáticamente combinará ambos archivos
+#
+# CASOS DE USO:
+#   - Usar modelos personalizados no incluidos en la imagen
+#   - Montar volumen local para desarrollar/probar modelos
+#   - Cambiar configuración específica de tu entorno
+#
+# =============================================================================
+
+services:
+  bitnet:
+    # -------------------------------------------------------------------------
+    # OPCIÓN 1: Build local (para desarrollo)
+    # -------------------------------------------------------------------------
+    # Descomentar para construir imagen localmente
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     MODEL_VARIANT: ${BITNET_MODEL:-falcon-10b}
+    
+    # -------------------------------------------------------------------------
+    # OPCIÓN 2: Volumen externo para modelos personalizados
+    # -------------------------------------------------------------------------
+    # Descomentar para usar modelos desde tu disco local
+    # volumes:
+    #   - ./models:/app/models
+    
+    # -------------------------------------------------------------------------
+    # OPCIÓN 3: Override de variables de entorno
+    # -------------------------------------------------------------------------
+    environment:
+      # Sobrescribir la ruta del modelo si usas uno personalizado
+      # - BITNET_MODEL_PATH=/app/models/mi-modelo-custom/ggml-model-i2_s.gguf
+      
+      # Ajustar recursos para tu hardware
+      - BITNET_CTX_SIZE=${BITNET_CTX_SIZE:-4096}
+      - BITNET_PARALLEL=${BITNET_PARALLEL:-4}
+      - BITNET_GPU_LAYERS=${BITNET_GPU_LAYERS:-99}
+
+# =============================================================================
+# EJEMPLOS DE CONFIGURACIÓN
+# =============================================================================
+#
+# 1. Usar modelo desde carpeta local:
+#    -----------------------------------
+#    services:
+#      bitnet:
+#        volumes:
+#          - ./models:/app/models
+#        environment:
+#          - BITNET_MODEL_PATH=/app/models/MiModelo/ggml-model-i2_s.gguf
+#
+# 2. Modo CPU (sin GPU):
+#    -----------------------------------
+#    services:
+#      bitnet:
+#        environment:
+#          - BITNET_GPU_LAYERS=0
+#        deploy:
+#          resources:
+#            reservations:
+#              devices: []
+#
+# 3. Reducir uso de VRAM (GPU con poca memoria):
+#    -----------------------------------
+#    services:
+#      bitnet:
+#        environment:
+#          - BITNET_PARALLEL=2
+#          - BITNET_CTX_SIZE=2048
+#          - BITNET_GPU_LAYERS=20
+#
+# 4. Multi-GPU (usar GPU específica):
+#    -----------------------------------
+#    services:
+#      bitnet:
+#        environment:
+#          - CUDA_VISIBLE_DEVICES=1
+#        deploy:
+#          resources:
+#            reservations:
+#              devices:
+#                - driver: nvidia
+#                  device_ids: ['1']
+#                  capabilities: [gpu]
+#
+# =============================================================================

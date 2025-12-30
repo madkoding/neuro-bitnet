@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BitNet Benchmark Report</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1400px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1, h2 { color: #333; }
+        .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            padding: 30px; 
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 { margin: 0 0 10px 0; }
+        .header p { margin: 5px 0; opacity: 0.9; }
+        .summary { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .card h3 { margin: 0 0 10px 0; color: #666; font-size: 14px; }
+        .card .value { font-size: 32px; font-weight: bold; color: #333; }
+        .card.success .value { color: #10b981; }
+        .card.error .value { color: #ef4444; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        th, td { 
+            padding: 12px 15px; 
+            text-align: left; 
+            border-bottom: 1px solid #eee;
+        }
+        th { background: #f8f9fa; font-weight: 600; color: #666; }
+        tr:hover { background: #f8f9fa; }
+        tr.pass td { background: rgba(16, 185, 129, 0.05); }
+        tr.fail td { background: rgba(239, 68, 68, 0.05); }
+        .status { font-size: 18px; text-align: center; }
+        .response { 
+            max-width: 300px; 
+            font-size: 12px; 
+            color: #666;
+            word-break: break-word;
+        }
+        .expected { font-size: 12px; color: #888; }
+        .footer { text-align: center; color: #888; margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 BitNet Benchmark Report</h1>
+        <p>📅 2025-12-29 20:31:50</p>
+        <p>🔗 Server: http://localhost:11435</p>
+    </div>
+    
+    <div class="summary">
+        <div class="card">
+            <h3>Total Tests</h3>
+            <div class="value">20</div>
+        </div>
+        <div class="card success">
+            <h3>Passed ✅</h3>
+            <div class="value">16 (80%)</div>
+        </div>
+        <div class="card error">
+            <h3>Failed ❌</h3>
+            <div class="value">4</div>
+        </div>
+        <div class="card">
+            <h3>Total Time</h3>
+            <div class="value">32.0s</div>
+        </div>
+        <div class="card">
+            <h3>Tokens</h3>
+            <div class="value">403</div>
+        </div>
+        <div class="card">
+            <h3>Avg Speed</h3>
+            <div class="value">12.6 t/s</div>
+        </div>
+    </div>
+    
+    <h2>📊 Por Categoría</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Categoría</th>
+                <th>Pasaron</th>
+                <th>Fallaron</th>
+                <th>% Éxito</th>
+                <th>Tiempo</th>
+                <th>Tokens</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        <tr>
+            <td>Chat</td>
+            <td>4</td>
+            <td>0</td>
+            <td>100%</td>
+            <td>6699ms</td>
+            <td>103</td>
+        </tr>
+        <tr>
+            <td>Matemáticas</td>
+            <td>2</td>
+            <td>2</td>
+            <td>50%</td>
+            <td>4877ms</td>
+            <td>25</td>
+        </tr>
+        <tr>
+            <td>Código</td>
+            <td>3</td>
+            <td>1</td>
+            <td>75%</td>
+            <td>7330ms</td>
+            <td>122</td>
+        </tr>
+        <tr>
+            <td>Tools</td>
+            <td>4</td>
+            <td>0</td>
+            <td>100%</td>
+            <td>7145ms</td>
+            <td>86</td>
+        </tr>
+        <tr>
+            <td>General</td>
+            <td>2</td>
+            <td>0</td>
+            <td>100%</td>
+            <td>3443ms</td>
+            <td>55</td>
+        </tr>
+        <tr>
+            <td>Razonamiento</td>
+            <td>1</td>
+            <td>1</td>
+            <td>50%</td>
+            <td>2490ms</td>
+            <td>12</td>
+        </tr>
+        </tbody>
+    </table>
+    
+    <h2>📋 Resultados Detallados</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Test</th>
+                <th>Categoría</th>
+                <th>Estado</th>
+                <th>Tiempo</th>
+                <th>Tokens</th>
+                <th>T/s</th>
+                <th>Esperado</th>
+                <th>Respuesta</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        <tr class="pass">
+            <td>Saludo</td>
+            <td>Chat</td>
+            <td class="status">✅</td>
+            <td>1267ms</td>
+            <td>11</td>
+            <td>8.7</td>
+            <td class="expected">hola/bien/ayudar</td>
+            <td class="response">Estoy bien, gracias. ¿Y tú?</td>
+        </tr>
+        <tr class="pass">
+            <td>Capital Francia</td>
+            <td>Chat</td>
+            <td class="status">✅</td>
+            <td>1287ms</td>
+            <td>10</td>
+            <td>7.8</td>
+            <td class="expected">París/Paris</td>
+            <td class="response">La capital de Francia es París.</td>
+        </tr>
+        <tr class="pass">
+            <td>Capital España</td>
+            <td>Chat</td>
+            <td class="status">✅</td>
+            <td>1241ms</td>
+            <td>9</td>
+            <td>7.2</td>
+            <td class="expected">Madrid</td>
+            <td class="response">Madrid es la capital de España.</td>
+        </tr>
+        <tr class="pass">
+            <td>Quién es Einstein</td>
+            <td>Chat</td>
+            <td class="status">✅</td>
+            <td>2904ms</td>
+            <td>73</td>
+            <td>25.1</td>
+            <td class="expected">físico/científico/physicist</td>
+            <td class="response">Albert Einstein fue un físico y matemático nobel de Austria, nacido el 14 de marzo de 1879 y destruyó en el 18 de marzo de 1955. Su trabajo clave incluye la teoría de la energía y del movimiento, la m...</td>
+        </tr>
+        <tr class="fail">
+            <td>25+17</td>
+            <td>Matemáticas</td>
+            <td class="status">❌</td>
+            <td>1079ms</td>
+            <td>2</td>
+            <td>1.9</td>
+            <td class="expected">42</td>
+            <td class="response">22</td>
+        </tr>
+        <tr class="pass">
+            <td>12*11</td>
+            <td>Matemáticas</td>
+            <td class="status">✅</td>
+            <td>1232ms</td>
+            <td>8</td>
+            <td>6.5</td>
+            <td class="expected">132</td>
+            <td class="response">12 * 11 = 132</td>
+        </tr>
+        <tr class="fail">
+            <td>100/4</td>
+            <td>Matemáticas</td>
+            <td class="status">❌</td>
+            <td>1290ms</td>
+            <td>8</td>
+            <td>6.2</td>
+            <td class="expected">25</td>
+            <td class="response">100 / 4 = 30</td>
+        </tr>
+        <tr class="pass">
+            <td>7^2</td>
+            <td>Matemáticas</td>
+            <td class="status">✅</td>
+            <td>1276ms</td>
+            <td>7</td>
+            <td>5.5</td>
+            <td class="expected">49</td>
+            <td class="response">7^2 = 49</td>
+        </tr>
+        <tr class="pass">
+            <td>Hola Mundo</td>
+            <td>Código</td>
+            <td class="status">✅</td>
+            <td>1324ms</td>
+            <td>10</td>
+            <td>7.5</td>
+            <td class="expected">print</td>
+            <td class="response">```python<br>print('Hola Mundo')<br>```</td>
+        </tr>
+        <tr class="pass">
+            <td>Función suma</td>
+            <td>Código</td>
+            <td class="status">✅</td>
+            <td>2529ms</td>
+            <td>58</td>
+            <td>22.9</td>
+            <td class="expected">def</td>
+            <td class="response">```python<br>def sumar(a, b):<br>    return a + b<br>```<br>Puedes usar esta función para sumar dos números, por ejemplo:<br><br>```python<br>resultado = sumar(5, 7)<br>print(resultado)  # Imprime 12<...</td>
+        </tr>
+        <tr class="fail">
+            <td>Lista reversa</td>
+            <td>Código</td>
+            <td class="status">❌</td>
+            <td>1911ms</td>
+            <td>35</td>
+            <td>18.3</td>
+            <td class="expected">reverse</td>
+            <td class="response">```python<br>items = [1, 2, 3, 4, 5]<br>inverted_items = items[::-1]<br>print(inverted_items)<br>```</td>
+        </tr>
+        <tr class="pass">
+            <td>Bucle for</td>
+            <td>Código</td>
+            <td class="status">✅</td>
+            <td>1566ms</td>
+            <td>19</td>
+            <td>12.1</td>
+            <td class="expected">for</td>
+            <td class="response">```python<br>for i in range(1, 6):<br>    print(i)<br>```</td>
+        </tr>
+        <tr class="pass">
+            <td>Tool: Clima Tokio</td>
+            <td>Tools</td>
+            <td class="status">✅</td>
+            <td>1740ms</td>
+            <td>19</td>
+            <td>10.9</td>
+            <td class="expected">get_weather</td>
+            <td class="response">{"tool": "get_weather", "arguments": {"location": "Tokyo"}}</td>
+        </tr>
+        <tr class="pass">
+            <td>Tool: Clima Londres</td>
+            <td>Tools</td>
+            <td class="status">✅</td>
+            <td>1760ms</td>
+            <td>20</td>
+            <td>11.4</td>
+            <td class="expected">get_weather</td>
+            <td class="response">{"tool": "get_weather", "arguments": {"location": "Londres"}}</td>
+        </tr>
+        <tr class="pass">
+            <td>Tool: Calcular</td>
+            <td>Tools</td>
+            <td class="status">✅</td>
+            <td>1746ms</td>
+            <td>20</td>
+            <td>11.4</td>
+            <td class="expected">calculate</td>
+            <td class="response">{"tool": "calculate", "arguments": {"param": "25  * 4"}}</td>
+        </tr>
+        <tr class="pass">
+            <td>Tool: Traducir</td>
+            <td>Tools</td>
+            <td class="status">✅</td>
+            <td>1899ms</td>
+            <td>27</td>
+            <td>14.2</td>
+            <td class="expected">translate</td>
+            <td class="response">{"tool": "translate", "arguments": {"text": "adiós", "to_language": "francais"}}</td>
+        </tr>
+        <tr class="pass">
+            <td>Saludo formal</td>
+            <td>General</td>
+            <td class="status">✅</td>
+            <td>1275ms</td>
+            <td>11</td>
+            <td>8.6</td>
+            <td class="expected">bien/estoy/encuentro</td>
+            <td class="response">Estoy bien, gracias. ¿Y tú?</td>
+        </tr>
+        <tr class="pass">
+            <td>Código con comentarios</td>
+            <td>General</td>
+            <td class="status">✅</td>
+            <td>2168ms</td>
+            <td>44</td>
+            <td>20.3</td>
+            <td class="expected">def</td>
+            <td class="response">```python<br>def multiply_numbers(a, b):<br>    return a * b<br><br># Ejemplo de uso:<br>result = multiply_numbers(5, 7)<br>print(result)  # Output: 35<br>```</td>
+        </tr>
+        <tr class="pass">
+            <td>Secuencia: 2,4,6,8,?</td>
+            <td>Razonamiento</td>
+            <td class="status">✅</td>
+            <td>1149ms</td>
+            <td>2</td>
+            <td>1.7</td>
+            <td class="expected">10</td>
+            <td class="response">10</td>
+        </tr>
+        <tr class="fail">
+            <td>Silogismo</td>
+            <td>Razonamiento</td>
+            <td class="status">❌</td>
+            <td>1341ms</td>
+            <td>10</td>
+            <td>7.5</td>
+            <td class="expected">animal</td>
+            <td class="response">Firulais es un perro.</td>
+        </tr>
+        </tbody>
+    </table>
+    
+    <div class="footer">
+        <p>Generated by neuro-bitnet benchmark suite</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,117 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      model_variant:
+        description: 'Model variant to build (falcon-10b, bitnet-2b, or all)'
+        required: false
+        default: 'all'
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: madkoding/neuro-bitnet
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [falcon-10b, bitnet-2b]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata for ${{ matrix.model }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Tag con nombre del modelo
+            type=raw,value=${{ matrix.model }}
+            # Tag con versión semántica + modelo
+            type=semver,pattern={{version}}-${{ matrix.model }}
+            type=semver,pattern={{major}}.{{minor}}-${{ matrix.model }}
+            type=semver,pattern={{major}}-${{ matrix.model }}
+            # SHA commit + modelo
+            type=sha,prefix=${{ matrix.model }}-
+          flavor: |
+            latest=false
+
+      - name: Build and push ${{ matrix.model }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            MODEL_VARIANT=${{ matrix.model }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.model }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.model }}
+
+  # Job separado para crear el tag 'latest' apuntando a falcon-10b
+  tag-latest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag falcon-10b as latest
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-10b
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-10b ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          echo "✅ Tagged falcon-10b as latest"
+
+  # Actualizar descripción en Docker Hub
+  update-dockerhub-description:
+    needs: tag-latest
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub Description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_NAME }}
+          short-description: "BitNet 1.58-bit LLM server with OpenAI-compatible API (Falcon-10B & BitNet-2B)"
+          readme-filepath: ./README.md
