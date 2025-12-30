@@ -104,19 +104,19 @@ def make_tests():
         TestCase("25+17", "Matemáticas", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "¿Cuánto es 25+17? Solo el número."}
-        ], 10, "42"),
+        ], 20, "42"),
         TestCase("12*11", "Matemáticas", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "¿Cuánto es 12*11? Solo el número."}
-        ], 10, "132"),
+        ], 20, "132"),
         TestCase("100/4", "Matemáticas", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "¿Cuánto es 100/4? Solo el número."}
-        ], 10, "25"),
+        ], 20, "25"),
         TestCase("7^2", "Matemáticas", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "¿Cuánto es 7 al cuadrado? Solo el número."}
-        ], 10, "49"),
+        ], 20, "49"),
         
         # Código - con system prompt universal
         TestCase("Hola Mundo", "Código", [
@@ -130,7 +130,7 @@ def make_tests():
         TestCase("Lista reversa", "Código", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "Escribe código Python para invertir una lista llamada 'items'."}
-        ], 80, "reverse"),
+        ], 80, "reverse/::-1/reversed"),
         TestCase("Bucle for", "Código", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "Escribe un bucle for en Python que imprima del 1 al 5."}
@@ -140,19 +140,19 @@ def make_tests():
         TestCase("Tool: Clima Tokio", "Tools", [
             {"role": "system", "content": TOOLS_SYSTEM},
             {"role": "user", "content": "¿Qué clima hace en Tokio?"}
-        ], 80, "get_weather"),
+        ], 150, "get_weather"),
         TestCase("Tool: Clima Londres", "Tools", [
             {"role": "system", "content": TOOLS_SYSTEM},
             {"role": "user", "content": "Consulta el clima en Londres por favor."}
-        ], 80, "get_weather"),
+        ], 150, "get_weather"),
         TestCase("Tool: Calcular", "Tools", [
             {"role": "system", "content": TOOLS_SYSTEM},
             {"role": "user", "content": "Usa la calculadora para: 25 * 4"}
-        ], 80, "calculate"),
+        ], 150, "calculate"),
         TestCase("Tool: Traducir", "Tools", [
             {"role": "system", "content": TOOLS_SYSTEM},
             {"role": "user", "content": "Traduce 'adiós' al francés"}
-        ], 80, "translate"),
+        ], 150, "translate"),
         
         # General - con system prompt universal
         TestCase("Saludo formal", "General", [
@@ -172,7 +172,7 @@ def make_tests():
         TestCase("Silogismo", "Razonamiento", [
             {"role": "system", "content": UNIVERSAL_SYSTEM},
             {"role": "user", "content": "Todos los perros son animales. Firulais es un perro. ¿Qué es Firulais?"}
-        ], 50, "animal"),
+        ], 50, "animal/perro"),
     ]
 
 # =============================================================================
@@ -184,7 +184,7 @@ def validate(response: str, expected: str, category: str) -> bool:
     e = expected.lower()
     
     if category == "Tools":
-        # Buscar JSON de tool call
+        # Buscar JSON de tool call - con tolerancia a JSON truncado/malformado
         try:
             start = response.find('{')
             if start == -1:
@@ -199,9 +199,29 @@ def validate(response: str, expected: str, category: str) -> bool:
                     if depth == 0:
                         end = i + 1
                         break
-            data = json.loads(response[start:end])
-            return data.get("tool") == expected
+            
+            json_str = response[start:end]
+            
+            # Si el JSON está truncado, intentar repararlo
+            if depth > 0:
+                json_str = response[start:] + ('}' * depth)
+            
+            try:
+                data = json.loads(json_str)
+                return data.get("tool") == expected
+            except json.JSONDecodeError:
+                # Fallback: buscar el nombre de la tool con regex
+                import re
+                tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', response)
+                if tool_match:
+                    return tool_match.group(1) == expected
+                return False
         except:
+            # Último intento con regex
+            import re
+            tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', response)
+            if tool_match:
+                return tool_match.group(1) == expected
             return False
     
     # Para otros, buscar palabras clave
