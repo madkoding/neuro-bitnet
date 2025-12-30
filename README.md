@@ -40,36 +40,29 @@ flowchart LR
 
 ### Backends de Almacenamiento
 
-El sistema soporta **dos backends**. Por defecto usa archivos locales (simple), pero puede escalar a SurrealDB (avanzado):
+El sistema soporta **dos backends**:
 
-```mermaid
-flowchart TB
-    subgraph Simple["📁 Backend: Archivos (Default)"]
-        direction LR
-        F1["~/.neuro-bitnet/rag/"]
-        F2["├── usuario_a/"]
-        F3["│   ├── documents.json"]
-        F4["│   └── embeddings.npy"]
-        F5["├── usuario_b/"]
-        F6["└── default/"]
-    end
-    
-    subgraph Avanzado["🗄️ Backend: SurrealDB (Opcional)"]
-        direction LR
-        S1["Puerto :8000"]
-        S2["Índices MTREE"]
-        S3["Millones de docs"]
-        S4["Multi-usuario nativo"]
-    end
+| Característica | 📁 Archivos (Default) | 🗄️ SurrealDB (Opcional) |
+|---------------|----------------------|-------------------------|
+| **Activar** | Por defecto | `docker compose --profile rag up` |
+| **Uso** | `--backend files` | `--backend surrealdb` |
+| **Escalabilidad** | ~10K documentos | Millones |
+| **Búsqueda** | O(n) numpy | O(log n) índices MTREE |
+| **Almacenamiento** | `~/.neuro-bitnet/rag/<user>/` | Base de datos centralizada |
+| **Multi-usuario** | Carpetas separadas | Filtro `WHERE user_id=` |
+
+**Estructura de archivos (modo simple):**
 ```
-
-| Característica | 📁 Archivos | 🗄️ SurrealDB |
-|---------------|-------------|--------------|
-| Instalación | Ninguna | `docker compose --profile rag up` |
-| Escalabilidad | ~10K docs | Millones |
-| Velocidad búsqueda | O(n) lineal | O(log n) índices |
-| Multi-usuario | Directorios | Filtro SQL |
-| Uso | `--backend files` | `--backend surrealdb` |
+~/.neuro-bitnet/rag/
+├── default/           # Usuario por defecto
+│   ├── documents.json
+│   └── embeddings.npy
+├── juan/              # --user juan
+│   ├── documents.json
+│   └── embeddings.npy
+└── maria/             # --user maria
+    └── ...
+```
 
 ### Sistema Multi-Usuario
 
