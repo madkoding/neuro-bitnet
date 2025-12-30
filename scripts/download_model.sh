@@ -73,10 +73,10 @@ case "$MODEL_VARIANT" in
 from huggingface_hub import hf_hub_download
 import os
 os.makedirs('models/falcon-7b', exist_ok=True)
-print('Descargando falcon3-7b-instruct-1.58bit.gguf...')
+print('Descargando ggml-model-i2_s.gguf...')
 path = hf_hub_download(
     repo_id='tiiuae/Falcon3-7B-Instruct-1.58bit-GGUF',
-    filename='falcon3-7b-instruct-1.58bit.gguf',
+    filename='ggml-model-i2_s.gguf',
     local_dir='models/falcon-7b'
 )
 print(f'Descargado en: {path}')
