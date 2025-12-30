@@ -1,11 +1,11 @@
 # =============================================================================
 # neuro-bitnet Dockerfile
-# Multi-model support: Falcon3-10B-Instruct-1.58bit / BitNet-b1.58-2B-4T
-# Build with: docker build --build-arg MODEL_VARIANT=falcon-10b .
+# Multi-model support: Falcon3-7B-Instruct-1.58bit / BitNet-b1.58-2B-4T
+# Build with: docker build --build-arg MODEL_VARIANT=falcon-7b .
 # =============================================================================
 
-# Argumento para seleccionar modelo (falcon-10b o bitnet-2b)
-ARG MODEL_VARIANT=falcon-10b
+# Argumento para seleccionar modelo (falcon-7b o bitnet-2b)
+ARG MODEL_VARIANT=falcon-7b
 
 FROM nvidia/cuda:12.6.3-devel-ubuntu22.04 AS builder
 
@@ -122,8 +122,8 @@ ENV BITNET_GPU_LAYERS=99
 ENV BITNET_THREADS=4
 
 # Configurar MODEL_PATH según variante (usando shell script para lógica condicional)
-# falcon-10b -> /app/models/Falcon3-10B-Instruct-1.58bit/ggml-model-i2_s.gguf
-# bitnet-2b  -> /app/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf
+# falcon-7b -> /app/models/falcon-7b/*.gguf
+# bitnet-2b -> /app/models/bitnet-2b/*.gguf
 ENV MODEL_VARIANT=${MODEL_VARIANT}
 ENV BITNET_MODEL_PATH=/app/models/${MODEL_VARIANT}/ggml-model-i2_s.gguf
 

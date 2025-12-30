@@ -2,62 +2,57 @@
 # =============================================================================
 # Script de descarga de modelos para neuro-bitnet
 # Uso: ./download_model.sh <MODEL_VARIANT>
-# Variantes: falcon-10b, bitnet-2b
+# Variantes: falcon-7b, bitnet-2b
 # =============================================================================
 
 set -e
 
-MODEL_VARIANT="${1:-falcon-10b}"
+MODEL_VARIANT="${1:-falcon-7b}"
 
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║           neuro-bitnet - Descarga de Modelo                    ║"
-echo "║           Variante: $MODEL_VARIANT                             ║"
+echo "║           Variante: $MODEL_VARIANT                                    ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 
+# Primero compilamos los binarios sin modelo (solo cmake)
+echo "🔨 Compilando binarios BitNet/llama.cpp..."
+mkdir -p build
+cd build
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_AVX2=ON -DGGML_AVX512=ON
+ninja
+cd ..
+echo "✅ Binarios compilados"
+
 case "$MODEL_VARIANT" in
-    "falcon-10b")
-        echo "📥 Descargando Falcon3-10B-Instruct-1.58bit..."
-        echo "   Esto puede tomar 15-30 minutos..."
+    "falcon-7b")
+        echo "📥 Descargando Falcon3-7B-Instruct-1.58bit-GGUF..."
         
-        # Descargar y convertir usando setup_env.py
-        python3 setup_env.py \
-            --hf-repo tiiuae/Falcon3-10B-Instruct-1.58bit \
-            -q i2_s
+        mkdir -p models/falcon-7b
         
-        # Renombrar directorio para consistencia
-        if [ -d "models/Falcon3-10B-Instruct-1.58bit" ]; then
-            mv models/Falcon3-10B-Instruct-1.58bit models/falcon-10b
-        fi
+        # Descargar GGUF pre-convertido desde HuggingFace
+        hf download tiiuae/Falcon3-7B-Instruct-1.58bit-GGUF \
+            --local-dir models/falcon-7b \
+            --include "*.gguf"
         
-        echo "✅ Falcon3-10B-Instruct descargado y convertido"
+        echo "✅ Falcon3-7B-Instruct descargado"
         ;;
         
     "bitnet-2b")
-        echo "📥 Descargando BitNet-b1.58-2B-4T (pre-convertido GGUF)..."
+        echo "📥 Descargando BitNet-b1.58-2B-4T-GGUF..."
         
         mkdir -p models/bitnet-2b
         
-        # Este modelo ya viene en formato GGUF, descarga directa
-        huggingface-cli download microsoft/BitNet-b1.58-2B-4T-gguf \
+        # Descargar GGUF pre-convertido desde HuggingFace
+        hf download microsoft/BitNet-b1.58-2B-4T-gguf \
             --local-dir models/bitnet-2b \
             --include "*.gguf"
-        
-        # Compilar binarios usando setup_env.py con el modelo de Microsoft
-        # setup_env.py requiere un modelo para compilar los binarios
-        echo "🔨 Compilando binarios BitNet..."
-        python3 setup_env.py \
-            --hf-repo microsoft/BitNet-b1.58-2B-4T \
-            -q i2_s
-        
-        # Eliminar el modelo descargado por setup_env.py (usaremos el GGUF pre-convertido)
-        rm -rf models/BitNet-b1.58-2B-4T 2>/dev/null || true
         
         echo "✅ BitNet-b1.58-2B-4T descargado"
         ;;
         
     *)
         echo "❌ Error: Variante de modelo no soportada: $MODEL_VARIANT"
-        echo "   Variantes disponibles: falcon-10b, bitnet-2b"
+        echo "   Variantes disponibles: falcon-7b, bitnet-2b"
         exit 1
         ;;
 esac

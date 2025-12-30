@@ -9,15 +9,15 @@ Docker container para modelos **BitNet 1.58-bit** con soporte GPU y API compatib
 ## 📦 Modelos Disponibles
 
 | Modelo | Tag Docker | Tamaño | VRAM | Calidad | Velocidad |
-|--------|------------|--------|------|---------|-----------|
-| **Falcon3-10B-Instruct** | `falcon-10b` (default) | ~6.5 GB | ~3 GB | ⭐⭐⭐⭐⭐ | Moderada |
+|--------|------------|--------|------|---------|----------|
+| **Falcon3-7B-Instruct** | `falcon-7b` (default) | ~5 GB | ~2 GB | ⭐⭐⭐⭐ | Moderada |
 | **BitNet-b1.58-2B-4T** | `bitnet-2b` | ~4 GB | ~800 MB | ⭐⭐⭐ | ⚡⚡⚡ Rápida |
 
 ## 🚀 Inicio Rápido
 
 ```bash
-# Opción 1: Falcon-10B (máxima calidad, default)
-docker pull madkoding/neuro-bitnet:falcon-10b
+# Opción 1: Falcon-7B (buen balance calidad/velocidad, default)
+docker pull madkoding/neuro-bitnet:falcon-7b
 docker compose up -d
 
 # Opción 2: BitNet-2B (más rápido, menos recursos)
@@ -31,7 +31,7 @@ curl http://localhost:11435/health
 
 ```bash
 # En .env
-BITNET_MODEL=falcon-10b   # Falcon 10B (default)
+BITNET_MODEL=falcon-7b    # Falcon 7B (default)
 BITNET_MODEL=bitnet-2b    # BitNet 2B (ligero)
 
 # O directamente en el comando
@@ -78,7 +78,7 @@ python3 tests/stress_test.py
 | 🔢 Matemáticas | 3 | 66% | Operaciones básicas |
 | 🇪🇸 Español | 3 | 100% | Traducción y código |
 
-> **Nota**: Resultados con modelo Falcon-10B. BitNet-2B puede variar.
+> **Nota**: Resultados con modelo Falcon-7B. BitNet-2B puede variar.
 
 ### Rendimiento
 
@@ -183,7 +183,7 @@ docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
 
 | Modelo | VRAM Base | + 4 slots × 4096 ctx | Total |
 |--------|-----------|---------------------|-------|
-| **Falcon-10B** | ~2.5 GB | ~1.5 GB | **~4 GB** |
+| **Falcon-7B** | ~1.5 GB | ~1 GB | **~2.5 GB** |
 | **BitNet-2B** | ~800 MB | ~400 MB | **~1.2 GB** |
 
 Para GPUs con menos VRAM:
@@ -291,6 +291,6 @@ Este proyecto usa:
 
 - [microsoft/BitNet](https://github.com/microsoft/BitNet)
 - [BitNet-b1.58-2B-4T en HuggingFace](https://huggingface.co/microsoft/BitNet-b1.58-2B-4T)
-- [Falcon3-10B-Instruct-1.58bit en HuggingFace](https://huggingface.co/tiiuae/Falcon3-10B-Instruct-1.58bit)
+- [Falcon3-7B-Instruct-1.58bit-GGUF en HuggingFace](https://huggingface.co/tiiuae/Falcon3-7B-Instruct-1.58bit-GGUF)
 - [llama.cpp Server API](https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md)
 - [Docker Hub: madkoding/neuro-bitnet](https://hub.docker.com/r/madkoding/neuro-bitnet)

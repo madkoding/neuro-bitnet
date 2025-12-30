@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [falcon-10b, bitnet-2b]
+        model: [falcon-7b, bitnet-2b]
     
     steps:
       - name: Checkout
@@ -90,12 +90,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Tag falcon-10b as latest
+      - name: Tag falcon-7b as latest
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-10b
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-10b ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-7b
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:falcon-7b ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ Tagged falcon-10b as latest"
+          echo "✅ Tagged falcon-7b as latest"
 
   # Actualizar descripción en Docker Hub
   update-dockerhub-description:
@@ -113,5 +113,5 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE_NAME }}
-          short-description: "BitNet 1.58-bit LLM server with OpenAI-compatible API (Falcon-10B & BitNet-2B)"
+          short-description: "BitNet 1.58-bit LLM server with OpenAI-compatible API (Falcon-7B & BitNet-2B)"
           readme-filepath: ./README.md
