@@ -16,15 +16,18 @@ Realizar una consulta inteligente con clasificación automática.
 
 **Request:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "query": "¿Cuál es la capital de Francia?",
   "user_id": "default",
   "include_sources": true
-}</code></pre>
+}
+{% endhighlight %}
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "answer": "La capital de Francia es París.",
   "sources": [
     {
@@ -44,7 +47,8 @@ Realizar una consulta inteligente con clasificación automática.
     "search_ms": 45,
     "llm_ms": 100
   }
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -54,18 +58,22 @@ Clasificar una consulta sin ejecutarla.
 
 **Request:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "query": "calcula 2 + 2"
-}</code></pre>
+}
+{% endhighlight %}
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "category": "math",
   "strategy": "llm_direct",
   "confidence": 0.95,
   "reasons": ["Patrón matemático detectado"]
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -75,7 +83,8 @@ Añadir un documento al índice RAG.
 
 **Request:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "content": "Python es un lenguaje de programación.",
   "source": "manual",
   "user_id": "default",
@@ -83,15 +92,18 @@ Añadir un documento al índice RAG.
     "topic": "programming",
     "language": "es"
   }
-}</code></pre>
+}
+{% endhighlight %}
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "id": "a1b2c3d4e5f6",
   "status": "indexed",
   "embedding_model": "minilm"
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -101,16 +113,19 @@ Buscar documentos similares.
 
 **Request:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "query": "programación en Python",
   "user_id": "default",
   "top_k": 5,
   "min_score": 0.5
-}</code></pre>
+}
+{% endhighlight %}
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "results": [
     {
       "id": "a1b2c3d4e5f6",
@@ -123,7 +138,8 @@ Buscar documentos similares.
     }
   ],
   "total": 1
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -133,13 +149,15 @@ Verificar estado del servidor.
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "status": "healthy",
   "version": "1.0.0",
   "llm_available": true,
   "embedding_model": "minilm",
   "documents_count": 42
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -149,14 +167,16 @@ Obtener estadísticas del servidor.
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "storage_type": "file",
   "total_documents": 150,
   "embedding_model": "minilm",
   "embedding_dimensions": 384,
   "uptime_seconds": 3600,
   "queries_processed": 500
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -174,7 +194,8 @@ Listar documentos indexados.
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "documents": [
     {
       "id": "a1b2c3d4e5f6",
@@ -186,7 +207,8 @@ Listar documentos indexados.
   "total": 150,
   "limit": 50,
   "offset": 0
-}</code></pre>
+}
+{% endhighlight %}
 
 ---
 
@@ -196,10 +218,12 @@ Eliminar un documento.
 
 **Response:**
 
-<pre><code class="language-json">{
+{% highlight json %}
+{
   "status": "deleted",
   "id": "a1b2c3d4e5f6"
-}</code></pre>
+}
+{% endhighlight %}
 
 ## Códigos de Error
 
