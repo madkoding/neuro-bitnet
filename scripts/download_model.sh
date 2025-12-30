@@ -42,9 +42,15 @@ case "$MODEL_VARIANT" in
             --local-dir models/bitnet-2b \
             --include "*.gguf"
         
-        # Compilar binarios (setup_env.py sin modelo para compilar llama-server)
+        # Compilar binarios usando setup_env.py con el modelo de Microsoft
+        # setup_env.py requiere un modelo para compilar los binarios
         echo "🔨 Compilando binarios BitNet..."
-        python3 setup_env.py -q i2_s || true
+        python3 setup_env.py \
+            --hf-repo microsoft/BitNet-b1.58-2B-4T \
+            -q i2_s
+        
+        # Eliminar el modelo descargado por setup_env.py (usaremos el GGUF pre-convertido)
+        rm -rf models/BitNet-b1.58-2B-4T 2>/dev/null || true
         
         echo "✅ BitNet-b1.58-2B-4T descargado"
         ;;
