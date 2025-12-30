@@ -431,67 +431,6 @@ python3 scripts/rag.py -e bge query "..."
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🎮 Requisitos GPU
-
-### Prerequisitos
-
-1. **NVIDIA Driver** ≥ 525.60.13
-2. **CUDA** ≥ 12.1
-3. **nvidia-container-toolkit**
-
-```bash
-# Instalar nvidia-container-toolkit (Ubuntu/Debian)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-
-# Verificar
-docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
-```
-
-### VRAM Estimada
-
-| Modelo | VRAM Base | + 4 slots × 4096 ctx | Total |
-|--------|-----------|---------------------|-------|
-| **Falcon-7B** | ~1.5 GB | ~1 GB | **~2.5 GB** |
-| **BitNet-2B** | ~800 MB | ~400 MB | **~1.2 GB** |
-
-Para GPUs con menos VRAM:
-```bash
-# En .env
-BITNET_PARALLEL=2
-BITNET_CTX_SIZE=2048
-# O usar bitnet-2b que requiere menos recursos
-BITNET_MODEL=bitnet-2b
-```
-
-## 🔄 Migración desde Ollama
-
-Si vienes de neuro-ollama, los cambios son mínimos:
-
-| Aspecto | Ollama | neuro-bitnet |
-|---------|--------|--------------|
-| Puerto | `11434` | `11435` |
-| API | OpenAI compatible | OpenAI compatible |
-| Endpoint chat | `/api/chat` | `/v1/chat/completions` |
-| Keep alive | Configurable | Siempre activo |
-| Modelo | `ollama pull model` | Pre-incluido en imagen |
-
-### Cambios en tu código
-
-```python
-# Antes (Ollama)
-client = OpenAI(base_url="http://localhost:11434/v1")
-
-# Después (BitNet)
-client = OpenAI(base_url="http://localhost:11435/v1")
-```
-
 ## ⚠️ Limitaciones
 
 1. **Function Calling**: Los modelos BitNet 1.58-bit **no tienen soporte nativo** para function calling/tools. El servidor usa modo genérico que es menos confiable.
@@ -501,45 +440,6 @@ client = OpenAI(base_url="http://localhost:11435/v1")
 3. **GPU Experimental**: El soporte GPU en bitnet.cpp es experimental. Si tienes problemas, usa `BITNET_GPU_LAYERS=0` para modo CPU.
 
 4. **Contexto Largo**: Los modelos fueron entrenados con 4096 tokens máximo. Contextos más largos degradan calidad.
-
-## 🐛 Troubleshooting
-
-### El contenedor no inicia
-
-```bash
-# Ver logs detallados
-docker-compose logs -f bitnet
-
-# Verificar GPU
-docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
-```
-
-### Error de VRAM
-
-```bash
-# Reducir uso de VRAM en .env
-BITNET_PARALLEL=1
-BITNET_CTX_SIZE=2048
-BITNET_GPU_LAYERS=0  # Modo CPU
-```
-
-### Modelo no se descarga
-
-```bash
-# Los modelos ya vienen pre-incluidos en las imágenes de Docker Hub
-# Si usas build local y falla:
-docker compose logs bitnet | tail -50
-```
-
-### Healthcheck falla
-
-```bash
-# El modelo tarda ~2-3 min en cargar. Esperar y verificar:
-curl http://localhost:11435/health
-
-# Si persiste, revisar logs:
-docker-compose logs bitnet | tail -50
-```
 
 ## 📊 Monitoreo
 
