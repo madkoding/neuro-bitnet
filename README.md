@@ -243,84 +243,114 @@ curl http://localhost:11435/v1/completions \
   }'
 ```
 
-## � Sistema RAG (Retrieval-Augmented Generation)
+
+## 🔍 Sistema RAG (Retrieval-Augmented Generation)
 
 El sistema RAG permite enriquecer las respuestas del modelo con información de tus propios documentos.
 
-### ¿Cómo funciona?
+### Modos de Operación
 
-1. **MiniLM** (u otro modelo de embeddings) convierte texto en vectores
-2. Los vectores se almacenan en un **Vector Store** local
-3. Al hacer una pregunta, se buscan documentos similares
-4. El contexto relevante se envía a **Falcon/BitNet** para generar la respuesta
+| Modo | Backend | Auto-learn | Memoria | Uso |
+|------|---------|------------|---------|-----|
+| **Simple** (default) | Archivos | ❌ | ❌ | Proyectos pequeños |
+| **Avanzado** | SurrealDB | ✅ | ✅ | Multi-usuario, producción |
 
-### Instalación de dependencias
+### Instalación
 
 ```bash
+# Dependencias básicas
 pip install sentence-transformers numpy requests
+
+# Para modo avanzado (opcional)
+pip install surrealdb
 ```
 
-### Uso del RAG
+### Modo Simple (Default)
 
 ```bash
 # Agregar documentos
-python3 scripts/rag.py add "Python fue creado por Guido van Rossum en 1991"
-python3 scripts/rag.py add "Docker es una plataforma de contenedores"
-
-# Agregar desde archivo
+python3 scripts/rag.py add "Python fue creado por Guido van Rossum"
 python3 scripts/rag.py add-file documentacion.txt
 
-# Consultar con RAG
+# Consultar
 python3 scripts/rag.py query "¿Quién creó Python?"
 
 # Modo interactivo
 python3 scripts/rag.py interactive
 
-# Listar documentos
+# Administrar
 python3 scripts/rag.py list
-
-# Limpiar todos los documentos
+python3 scripts/rag.py delete <doc_id>
 python3 scripts/rag.py clear
 ```
 
-### Cambiar modelo de embeddings
+### Modo Avanzado (Multi-usuario + Auto-learn)
 
 ```bash
-# MiniLM (default, ligero)
-python3 scripts/rag.py --embedding-model minilm query "¿Qué es Docker?"
+# 1. Levantar SurrealDB
+docker compose --profile rag up -d
 
-# MPNet (mejor calidad)
-python3 scripts/rag.py --embedding-model mpnet query "¿Qué es Docker?"
+# 2. Usar con auto-learn (busca en web si no tiene info)
+python3 scripts/rag.py --backend surrealdb --auto-learn query "¿Qué es Kubernetes?"
 
-# E5 Large (excelente para búsqueda)
-python3 scripts/rag.py --embedding-model e5 query "¿Qué es Docker?"
+# 3. Multi-usuario (cada usuario tiene su propio espacio)
+python3 scripts/rag.py --user juan --backend surrealdb add "Notas de Juan"
+python3 scripts/rag.py --user maria --backend surrealdb add "Notas de María"
 
-# BGE Large (enterprise)
-python3 scripts/rag.py --embedding-model bge query "¿Qué es Docker?"
+# 4. Guardar conversaciones como conocimiento
+python3 scripts/rag.py --save-conversations interactive
 ```
 
-### Ejemplo práctico
+### Aprendizaje desde la Web
 
 ```bash
-# 1. Agregar conocimiento al sistema
-python3 scripts/rag.py add "neuro-bitnet es un proyecto que ejecuta modelos BitNet 1.58-bit en Docker"
-python3 scripts/rag.py add "Los modelos disponibles son Falcon-7B y BitNet-2B"
-python3 scripts/rag.py add "El sistema soporta GPU NVIDIA con CUDA 12.6"
+# Aprender sobre un tema (busca en Wikipedia + DuckDuckGo)
+python3 scripts/rag.py learn "Elon Musk"
+python3 scripts/rag.py learn "Machine Learning"
 
-# 2. Consultar
-python3 scripts/rag.py query "¿Qué modelos soporta neuro-bitnet?"
-# Respuesta: "neuro-bitnet soporta los modelos Falcon-7B y BitNet-2B..."
+# Con auto-learn, lo hace automáticamente si no tiene info
+python3 scripts/rag.py --auto-learn query "¿Quién fundó SpaceX?"
 ```
 
-### Almacenamiento persistente
+### Modelos de Embeddings
 
-Los documentos se guardan en:
-- `~/.neuro-bitnet/rag/<modelo>/documents.json` - Textos originales
-- `~/.neuro-bitnet/rag/<modelo>/embeddings.npy` - Vectores
+```bash
+# MiniLM (default, 80MB, rápido)
+python3 scripts/rag.py -e minilm query "..."
 
-Cada modelo de embeddings tiene su propio directorio para evitar conflictos.
+# MPNet (420MB, mejor calidad)
+python3 scripts/rag.py -e mpnet query "..."
 
-## �🔧 Configuración
+# E5 Large (1.2GB, excelente para búsqueda)
+python3 scripts/rag.py -e e5 query "..."
+
+# BGE Large (1.3GB, multiidioma)
+python3 scripts/rag.py -e bge query "..."
+```
+
+### Almacenamiento
+
+**Modo Simple (archivos):**
+```
+~/.neuro-bitnet/rag/<user_id>/
+├── documents.json    # Textos
+└── embeddings.npy    # Vectores
+```
+
+**Modo Avanzado (SurrealDB):**
+- Base de datos: `neurobitnet.rag`
+- Índices vectoriales MTREE para búsqueda eficiente
+- Escalable a millones de documentos
+
+### Variables de Entorno RAG
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `RAG_LLM_URL` | `http://localhost:11435` | URL del LLM |
+| `RAG_SURREALDB_URL` | `ws://localhost:8000/rpc` | URL de SurrealDB |
+| `RAG_SURREALDB_USER` | `root` | Usuario SurrealDB |
+| `RAG_SURREALDB_PASS` | `root` | Password SurrealDB |
+
 
 ### Variables de Entorno
 

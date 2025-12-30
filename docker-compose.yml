@@ -80,7 +80,41 @@ services:
     # Reinicio automático
     restart: unless-stopped
 
+  # ==========================================================================
+  # SurrealDB (OPCIONAL) - Para RAG avanzado multi-usuario
+  # Activar con: docker compose --profile rag up -d
+  # ==========================================================================
+  surrealdb:
+    container_name: neuro-surrealdb
+    image: surrealdb/surrealdb:latest
+    profiles:
+      - rag
+    
+    command: start --user root --pass root file:/data/rag.db
+    
+    volumes:
+      - surrealdb-data:/data
+    
+    ports:
+      - "${SURREALDB_PORT:-8000}:8000"
+    
+    networks:
+      - bitnet-network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 # Red
 networks:
   bitnet-network:
     driver: bridge
+
+# Volúmenes
+volumes:
+  surrealdb-data:
+    driver: local
