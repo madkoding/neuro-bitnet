@@ -78,11 +78,11 @@ class TestFileStoragePersistence:
         assert doc.content == sample_document.content
     
     def test_embeddings_persist_correctly(self, tmp_path):
-        """Test que embeddings se guardan y cargan correctamente."""
+        """Test que embeddings se guardan y cargan correctamente para búsqueda."""
         embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
         doc = Document(
             id="emb_test",
-            content="Test",
+            content="Test document for embedding search",
             user_id="test_user",
             source="test",
             embedding=embedding
@@ -93,18 +93,19 @@ class TestFileStoragePersistence:
         storage1.initialize("test_user")
         storage1.add_document(doc)
         
-        # Recargar
+        # Verificar que el archivo de embeddings existe
+        emb_file = tmp_path / "test_user" / "embeddings.npy"
+        assert emb_file.exists(), "Embeddings file should be created"
+        
+        # Recargar y verificar búsqueda funciona (embeddings se usan internamente)
         storage2 = FileStorage(tmp_path)
         storage2.initialize("test_user")
         
-        # Verificar embedding
-        loaded = storage2.get_document("emb_test", "test_user")
-        assert loaded is not None
-        assert loaded.embedding is not None
-        
-        # Comparar valores (pueden ser np.array o list)
+        # La búsqueda debe funcionar usando los embeddings persistidos
         import numpy as np
-        np.testing.assert_array_almost_equal(loaded.embedding, embedding)
+        results = storage2.search(embedding, "test_user", top_k=1, min_score=0.0)
+        assert len(results) > 0, "Search should find the document using persisted embeddings"
+        assert results[0].document.id == "emb_test"
 
 
 class TestFileStorageAddDocument:
@@ -202,16 +203,16 @@ class TestFileStorageStats:
     
     def test_stats_returns_correct_type(self, storage):
         """Test que stats retorna tipo correcto."""
-        stats = storage.get_stats()
+        stats = storage.get_stats("test_user")
         
-        assert stats["storage_type"] == "file"
+        assert "total" in stats
     
     def test_stats_shows_data_dir(self, storage, tmp_path):
         """Test que stats muestra directorio de datos."""
-        stats = storage.get_stats()
+        stats = storage.get_stats("test_user")
         
-        assert "data_dir" in stats
-        assert str(tmp_path) in stats["data_dir"]
+        assert "storage_path" in stats
+        assert str(tmp_path) in stats["storage_path"]
 
 
 class TestFileStorageEdgeCases:

@@ -120,8 +120,10 @@ class QueryClassifier:
         r'traduce?\s+(esto|eso|el|la|lo)\s+(a|al)',
         r'translate',
         r'buscar?\s+(información|info)',
-        r'enviar?\s+(mensaje|email|correo)',
-        r'crear?\s+(evento|recordatorio|alarma)',
+        r'enviar?\s+(un\s+)?(mensaje|email|correo)',
+        r'mensaje\s+(a|para)\s+\w+',
+        r'crear?\s+(un\s+)?(evento|recordatorio|alarma)',
+        r'recordatorio\b',
         r'obtener?\s+(datos|información)',
         r'calcula(r|dora)?\s+\d+',               # calcula 25*4 (comando para herramienta)
         r'suma\s+\d+|resta\s+\d+|multiplica\s+\d+|divide\s+\d+',
@@ -130,7 +132,8 @@ class QueryClassifier:
     # Patrones de saludos
     GREETING_PATTERNS = [
         r'^hola\b|^hi\b|^hey\b',
-        r'^buenos?\s+(días|tardes|noches)',
+        r'^buenas?\s*(días|tardes|noches)',
+        r'^buenos\s+(días|tardes|noches)',
         r'^saludos',
         r'^qué\s+tal|^cómo\s+estás',
         r'^adiós|^hasta\s+(luego|pronto|mañana)',

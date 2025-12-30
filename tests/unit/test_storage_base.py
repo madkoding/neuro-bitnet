@@ -27,6 +27,7 @@ class TestABCStorage:
         abstract_methods = ABCStorage.__abstractmethods__
         
         expected_methods = {
+            'initialize',
             'add_document',
             'search',
             'list_documents',

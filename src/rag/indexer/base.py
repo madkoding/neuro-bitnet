@@ -81,3 +81,17 @@ class ABCAnalyzer(ABC):
             Lista de extensiones (ej: ['.py', '.pyw'])
         """
         pass
+    
+    def can_analyze(self, file_path: str) -> bool:
+        """
+        Determina si este analizador puede procesar un archivo.
+        
+        Args:
+            file_path: Ruta o nombre del archivo
+            
+        Returns:
+            True si el analizador soporta la extensión del archivo
+        """
+        import os
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in self.supported_extensions

@@ -39,8 +39,8 @@ class TestInMemoryStorageInitialization:
         storage = InMemoryStorage()
         storage.initialize("user1")
         
-        stats = storage.get_stats()
-        assert stats["total_documents"] == 0
+        stats = storage.get_stats("user1")
+        assert stats["total"] == 0
     
     def test_initialize_multiple_users(self):
         """Test que se pueden inicializar múltiples usuarios."""
@@ -80,8 +80,8 @@ class TestAddDocument:
         """Test que añadir documento incrementa el contador."""
         storage.add_document(sample_document)
         
-        stats = storage.get_stats()
-        assert stats["total_documents"] == 1
+        stats = storage.get_stats("test_user")
+        assert stats["total"] == 1
     
     def test_add_multiple_documents(self, storage):
         """Test añadir múltiples documentos."""
@@ -95,8 +95,8 @@ class TestAddDocument:
             )
             storage.add_document(doc)
         
-        stats = storage.get_stats()
-        assert stats["total_documents"] == 5
+        stats = storage.get_stats("test_user")
+        assert stats["total"] == 5
 
 
 class TestGetDocument:
@@ -310,9 +310,9 @@ class TestGetStats:
     
     def test_stats_empty(self, storage):
         """Test stats cuando está vacío."""
-        stats = storage.get_stats()
+        stats = storage.get_stats("test_user")
         
-        assert stats["total_documents"] == 0
+        assert stats["total"] == 0
     
     def test_stats_with_documents(self, storage):
         """Test stats con documentos."""
@@ -323,7 +323,7 @@ class TestGetStats:
                 embedding=[float(i)]
             ))
         
-        stats = storage.get_stats()
+        stats = storage.get_stats("test_user")
         
-        assert stats["total_documents"] == 5
-        assert stats["storage_type"] == "memory"
+        assert stats["total"] == 5
+        assert stats["has_embeddings"] is True
