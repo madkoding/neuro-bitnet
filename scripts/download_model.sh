@@ -14,40 +14,40 @@ echo "║           neuro-bitnet - Descarga de Modelo                    ║"
 echo "║           Variante: $MODEL_VARIANT                                    ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 
-# Función para compilar usando setup_env.py (ignora errores de conversión)
-compile_binaries() {
-    echo "🔨 Compilando binarios BitNet usando setup_env.py..."
-    
-    # Usar BitNet-2B para compilar (es pequeño y rápido)
-    # El flag -q i2_s es necesario para la compilación
-    # Permitimos que falle la conversión pero los binarios se compilan primero
-    python3 setup_env.py -q i2_s 2>&1 || {
-        echo "⚠️  setup_env.py terminó con error (posiblemente en conversión)"
-        echo "   Verificando si los binarios fueron compilados..."
-    }
-    
-    # Verificar que los binarios existen
-    if [ -f "build/bin/llama-server" ] || [ -f "build/bin/llama-cli" ]; then
-        echo "✅ Binarios compilados correctamente"
-        return 0
-    else
-        echo "❌ Error: No se encontraron los binarios compilados"
-        ls -la build/bin/ 2>/dev/null || echo "   Directorio build/bin no existe"
-        return 1
-    fi
-}
+# -----------------------------------------------------------------------------
+# Paso 1: Compilar binarios usando BitNet-2B (modelo pequeño, rápido)
+# -----------------------------------------------------------------------------
+echo ""
+echo "📥 Paso 1: Compilando binarios con BitNet-2B (modelo de compilación)..."
+echo "   Esto incluye: cmake + descarga modelo + conversión"
 
+# Usar BitNet-2B para compilar - es pequeño y oficial de Microsoft
+python3 setup_env.py \
+    --hf-repo microsoft/BitNet-b1.58-2B-4T \
+    -q i2_s
+
+echo "✅ Binarios compilados correctamente"
+
+# Verificar que los binarios existen
+if [ ! -f "build/bin/llama-server" ] && [ ! -f "build/bin/llama-cli" ]; then
+    echo "❌ Error: No se encontraron los binarios compilados"
+    ls -la build/bin/ 2>/dev/null || echo "   Directorio build/bin no existe"
+    exit 1
+fi
+
+echo "📊 Binarios disponibles:"
+ls -la build/bin/
+
+# -----------------------------------------------------------------------------
+# Paso 2: Descargar el modelo GGUF específico según variante
+# -----------------------------------------------------------------------------
 case "$MODEL_VARIANT" in
     "falcon-7b")
         echo ""
-        echo "📥 Paso 1: Compilando binarios..."
-        compile_binaries
-        
-        echo ""
         echo "📥 Paso 2: Descargando Falcon3-7B-Instruct-1.58bit-GGUF..."
         
-        # Limpiar modelo usado para compilación
-        rm -rf models/* 2>/dev/null || true
+        # Eliminar modelo de compilación
+        rm -rf models/BitNet-b1.58-2B-4T 2>/dev/null || true
         mkdir -p models/falcon-7b
         
         # Descargar GGUF pre-convertido desde HuggingFace
@@ -55,45 +55,27 @@ case "$MODEL_VARIANT" in
 from huggingface_hub import hf_hub_download
 import os
 os.makedirs('models/falcon-7b', exist_ok=True)
-print('Descargando modelo GGUF...')
+print('Descargando falcon3-7b-instruct-1.58bit.gguf...')
 hf_hub_download(
     repo_id='tiiuae/Falcon3-7B-Instruct-1.58bit-GGUF',
     filename='falcon3-7b-instruct-1.58bit.gguf',
     local_dir='models/falcon-7b'
 )
-print('✅ Descarga completada')
+print('Descarga completada')
 "
-        
         echo "✅ Falcon3-7B-Instruct descargado"
         ;;
         
     "bitnet-2b")
         echo ""
-        echo "📥 Paso 1: Compilando binarios..."
-        compile_binaries
+        echo "📥 Paso 2: Modelo BitNet-2B ya está listo (usado para compilación)"
         
-        echo ""
-        echo "📥 Paso 2: Descargando BitNet-b1.58-2B-4T-GGUF..."
+        # Renombrar directorio para consistencia
+        if [ -d "models/BitNet-b1.58-2B-4T" ]; then
+            mv models/BitNet-b1.58-2B-4T models/bitnet-2b
+        fi
         
-        # Limpiar modelo usado para compilación
-        rm -rf models/* 2>/dev/null || true
-        mkdir -p models/bitnet-2b
-        
-        # Descargar GGUF pre-convertido desde HuggingFace
-        python3 -c "
-from huggingface_hub import hf_hub_download
-import os
-os.makedirs('models/bitnet-2b', exist_ok=True)
-print('Descargando modelo GGUF...')
-hf_hub_download(
-    repo_id='microsoft/BitNet-b1.58-2B-4T-gguf',
-    filename='ggml-model-i2_s.gguf',
-    local_dir='models/bitnet-2b'
-)
-print('✅ Descarga completada')
-"
-        
-        echo "✅ BitNet-b1.58-2B-4T descargado"
+        echo "✅ BitNet-b1.58-2B-4T listo"
         ;;
         
     *)
@@ -103,7 +85,9 @@ print('✅ Descarga completada')
         ;;
 esac
 
-# Limpiar archivos temporales para reducir tamaño de imagen
+# -----------------------------------------------------------------------------
+# Paso 3: Limpieza
+# -----------------------------------------------------------------------------
 echo ""
 echo "🧹 Limpiando archivos temporales..."
 find models/ -name "*.safetensors" -delete 2>/dev/null || true
@@ -114,12 +98,8 @@ rm -rf /root/.cache/huggingface 2>/dev/null || true
 
 # Mostrar resultado
 echo ""
-echo "📊 Modelo descargado:"
+echo "📊 Modelo final:"
 find models/ -name "*.gguf" -exec ls -lah {} \;
-
-echo ""
-echo "📊 Binarios compilados:"
-ls -la build/bin/ 2>/dev/null | head -10
 
 echo ""
 echo "✅ Build completado para variante: $MODEL_VARIANT"
