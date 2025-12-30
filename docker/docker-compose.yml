@@ -3,6 +3,7 @@
 # Multi-model: Falcon3-7B-Instruct-1.58bit / BitNet-b1.58-2B-4T
 # Seleccionar modelo: BITNET_MODEL=falcon-7b docker compose up
 # Puerto: 11435 (para coexistir con Ollama en 11434)
+# Ejecutar desde carpeta docker/: docker compose up -d
 # =============================================================================
 
 services:
@@ -14,8 +15,8 @@ services:
     
     # Para build local, descomentar:
     # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    #   context: ..
+    #   dockerfile: docker/Dockerfile
     #   args:
     #     MODEL_VARIANT: ${BITNET_MODEL:-bitnet-2b}
     
@@ -109,6 +110,45 @@ services:
       timeout: 10s
       retries: 3
 
+  # ==========================================================================
+  # RAG Server Inteligente (OPCIONAL) - Clasificación automática de queries
+  # Activar con: docker compose --profile rag-smart up -d
+  # ==========================================================================
+  rag-server:
+    container_name: neuro-rag-server
+    profiles:
+      - rag-smart
+    
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rag
+    
+    environment:
+      - RAG_SERVER_PORT=8080
+      - RAG_LLM_URL=http://bitnet:8080
+      - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-minilm}
+    
+    ports:
+      - "${RAG_SERVER_PORT:-11436}:8080"
+    
+    volumes:
+      - rag-data:/root/.neuro-bitnet/rag
+    
+    networks:
+      - bitnet-network
+    
+    depends_on:
+      bitnet:
+        condition: service_healthy
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 # Red
 networks:
   bitnet-network:
@@ -117,4 +157,6 @@ networks:
 # Volúmenes
 volumes:
   surrealdb-data:
+    driver: local
+  rag-data:
     driver: local

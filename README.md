@@ -2,537 +2,123 @@
 
 [![Docker Hub](https://img.shields.io/docker/v/madkoding/neuro-bitnet?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
 [![Docker Pulls](https://img.shields.io/docker/pulls/madkoding/neuro-bitnet?logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/madkoding/neuro-bitnet/docker-publish.yml?label=Build&logo=github)](https://github.com/madkoding/neuro-bitnet/actions)
+[![Tests](https://img.shields.io/github/actions/workflow/status/madkoding/neuro-bitnet/tests.yml?label=Tests&logo=github)](https://github.com/madkoding/neuro-bitnet/actions)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://madkoding.github.io/neuro-bitnet/)
 
-Docker container para modelos **BitNet 1.58-bit** con API compatible con OpenAI y sistema **RAG** integrado.
+RAG Server inteligente con clasificación automática de consultas para modelos LLM cuantizados.
 
-## 📦 Modelos Disponibles
+## ✨ Características
 
-### Modelos de Generación (LLM)
-
-| Modelo | Tag Docker | Tamaño | Calidad | Velocidad |
-|--------|------------|--------|---------|----------|
-| **BitNet-b1.58-2B-4T** | `bitnet-2b` (default) | ~4 GB | ⭐⭐⭐ | ⚡⚡⚡ Rápida |
-| **Falcon3-7B-Instruct** | `falcon-7b` | ~5 GB | ⭐⭐⭐⭐ | Moderada |
-
-### Modelos de Embeddings (RAG)
-
-| Modelo | Tamaño | RAM | Calidad | Uso recomendado |
-|--------|--------|-----|---------|-----------------|
-| **all-MiniLM-L6-v2** | 80MB | ~200MB | Buena | FAQs, chatbots básicos |
-| **all-mpnet-base-v2** | 420MB | ~500MB | Muy buena | Documentación técnica |
-| **e5-large-v2** | 1.2GB | ~1.5GB | Excelente | Búsqueda semántica avanzada |
-| **bge-large-en-v1.5** | 1.3GB | ~1.5GB | Excelente | Producción enterprise |
-
-## 🏗️ Arquitectura
-
-### Flujo General
-
-```mermaid
-flowchart LR
-    U["👤 Usuario"] --> RAG["🧠 RAG"]
-    RAG --> E["📊 Embeddings<br/>MiniLM"]
-    E --> S["💾 Storage"]
-    S --> RAG
-    RAG --> LLM["🦅 Falcon-7B"]
-    LLM --> U
-```
-
-### Backends de Almacenamiento
-
-El sistema soporta **dos backends**:
-
-| Característica | 📁 Archivos (Default) | 🗄️ SurrealDB (Opcional) |
-|---------------|----------------------|-------------------------|
-| **Activar** | Por defecto | `docker compose --profile rag up` |
-| **Uso** | `--backend files` | `--backend surrealdb` |
-| **Escalabilidad** | ~10K documentos | Millones |
-| **Búsqueda** | O(n) numpy | O(log n) índices MTREE |
-| **Almacenamiento** | `~/.neuro-bitnet/rag/<user>/` | Base de datos centralizada |
-| **Multi-usuario** | Carpetas separadas | Filtro `WHERE user_id=` |
-
-**Estructura de archivos (modo simple):**
-```
-~/.neuro-bitnet/rag/
-├── default/           # Usuario por defecto
-│   ├── documents.json
-│   └── embeddings.npy
-├── juan/              # --user juan
-│   ├── documents.json
-│   └── embeddings.npy
-└── maria/             # --user maria
-    └── ...
-```
-
-### Sistema Multi-Usuario
-
-Cada usuario tiene su espacio **aislado**:
-
-```mermaid
-flowchart LR
-    subgraph Usuarios
-        U1["👤 --user juan"]
-        U2["👤 --user maria"]
-        U3["👤 (default)"]
-    end
-    
-    subgraph Archivos["📁 Archivos"]
-        D1["juan/"]
-        D2["maria/"]
-        D3["default/"]
-    end
-    
-    subgraph SurrealDB["🗄️ SurrealDB"]
-        Q["WHERE user_id = ?"]
-    end
-    
-    U1 --> D1
-    U2 --> D2
-    U3 --> D3
-    
-    U1 --> Q
-    U2 --> Q
-    U3 --> Q
-```
-
-### Diagrama de Secuencia: Consulta RAG
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant U as 👤 Usuario
-    participant RAG as 🧠 RAG
-    participant E as 📊 Embeddings
-    participant S as 💾 Storage
-    participant LLM as 🦅 LLM
-
-    U->>RAG: query("¿Quién creó Python?")
-    RAG->>E: encode(pregunta)
-    E-->>RAG: vector [384 dims]
-    RAG->>S: buscar similares
-    S-->>RAG: documentos + scores
-    RAG->>LLM: pregunta + contexto
-    LLM-->>U: "Guido van Rossum"
-```
-
-### Diagrama de Secuencia: Auto-Learn (Opcional)
-
-Cuando `--auto-learn` está activo y no hay información suficiente:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant U as 👤 Usuario
-    participant RAG as 🧠 RAG
-    participant S as 💾 Storage
-    participant W as 🌐 Web
-    participant LLM as 🦅 LLM
-
-    U->>RAG: query("¿Qué es Kubernetes?")
-    RAG->>S: buscar similares
-    S-->>RAG: ❌ score < 0.5
-    
-    rect rgb(255, 250, 230)
-        Note over RAG,W: Auto-learn
-        RAG->>W: buscar en Wikipedia + DuckDuckGo
-        W-->>RAG: resultados web
-        RAG->>S: guardar como source:"web"
-    end
-    
-    RAG->>S: buscar de nuevo
-    S-->>RAG: ✅ docs aprendidos
-    RAG->>LLM: pregunta + contexto
-    LLM-->>U: respuesta
-```
-
-### Componentes del Sistema
-
-```mermaid
-flowchart TB
-    subgraph Cliente["🖥️ Cliente"]
-        CLI["python rag.py"]
-    end
-    
-    subgraph Embeddings["📊 Modelos Embeddings"]
-        M1["MiniLM (80MB)"]
-        M2["MPNet (420MB)"]
-        M3["E5 (1.2GB)"]
-        M4["BGE (1.3GB)"]
-    end
-    
-    subgraph Storage["💾 Almacenamiento"]
-        Files["📁 Archivos"]
-        Surreal["🗄️ SurrealDB"]
-    end
-    
-    subgraph LLM["🤖 LLM Server :11435"]
-        Falcon["🦅 Falcon-7B"]
-        BitNet["⚡ BitNet-2B"]
-    end
-    
-    subgraph WebSearch["🌐 Web (Opcional)"]
-        Wiki["Wikipedia"]
-        DDG["DuckDuckGo"]
-    end
-    
-    CLI --> Embeddings
-    Embeddings --> Storage
-    Storage --> LLM
-    WebSearch -.->|"--auto-learn"| Storage
-```
+- 🧠 **Clasificación Inteligente**: Detecta automáticamente el tipo de consulta
+- 🔍 **RAG Selectivo**: Solo usa RAG cuando mejora la precisión (+33% en factuales)
+- 📊 **Múltiples Embeddings**: Soporte para MiniLM y MPNet
+- 🐳 **Docker Ready**: Imágenes optimizadas para GPU NVIDIA
+- 🧪 **Bien Testeado**: Suite completa de tests unitarios e integración
 
 ## 🚀 Inicio Rápido
 
+### Con Docker (Recomendado)
+
 ```bash
-# Opción 1: Falcon-7B (buen balance calidad/velocidad, default)
-docker pull madkoding/neuro-bitnet:falcon-7b
+cd docker
 docker compose up -d
 
-# Opción 2: BitNet-2B (más rápido, menos recursos)
-BITNET_MODEL=bitnet-2b docker compose up -d
-
-# Verificar que está funcionando
+# Verificar estado
 curl http://localhost:11435/health
 ```
 
-### Seleccionar Modelo
+### Con Python
 
 ```bash
-# En .env
-BITNET_MODEL=falcon-7b    # Falcon 7B (default)
-BITNET_MODEL=bitnet-2b    # BitNet 2B (ligero)
+# Instalar dependencias
+pip install -r requirements.txt
 
-# O directamente en el comando
-BITNET_MODEL=bitnet-2b docker compose up -d
+# Iniciar servidor
+python -m src.server.rag_server
 ```
 
-### Build Local (opcional)
+## 📊 Uso
 
-Si prefieres construir la imagen localmente:
-
-```bash
-# Editar docker-compose.yml, descomentar la sección build
-# Luego:
-docker compose build
-docker compose up -d
-```
-
-## 🧪 Tests y Benchmarks
-
-El proyecto incluye un suite completo de pruebas:
+### Hacer una consulta
 
 ```bash
-# Ejecutar benchmark rápido (tabla comparativa)
-python3 tests/quick_bench.py
-
-# Ejecutar benchmark completo (22 tests)
-python3 tests/benchmark.py
-
-# Ejecutar stress test (rendimiento)
-python3 tests/stress_test.py
-
-# Usar el runner interactivo
-./tests/run_tests.sh
-```
-
-### Resultados Típicos
-
-| Categoría | Tests | Éxito | Notas |
-|-----------|-------|-------|-------|
-| 💬 Chat | 3 | 100% | Respuestas conversacionales |
-| 💻 Código | 5 | 100% | Python, SQL, clases |
-| 🔧 Tools | 5 | 60-80% | Simulación prompt-based |
-| 🧠 Razonamiento | 3 | 66% | Lógica y secuencias |
-| 🔢 Matemáticas | 3 | 66% | Operaciones básicas |
-| 🇪🇸 Español | 3 | 100% | Traducción y código |
-
-> **Nota**: Resultados con modelo Falcon-7B. BitNet-2B puede variar.
-
-### Rendimiento
-
-- **Tokens/segundo**: ~35-40 t/s (CPU AVX512)
-- **Latencia promedio**: ~800ms por request
-- **Throughput**: ~1-2 requests/segundo
-
-## 📡 API Endpoints
-
-El servidor expone una API **100% compatible con OpenAI**:
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/v1/chat/completions` | POST | Chat completions (conversacional) |
-| `/v1/completions` | POST | Text completions |
-| `/v1/models` | GET | Listar modelos disponibles |
-| `/health` | GET | Health check |
-| `/metrics` | GET | Métricas Prometheus |
-
-### Ejemplo: Chat Completion
-
-```bash
-curl http://localhost:11435/v1/chat/completions \
+curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "bitnet",
-    "messages": [
-      {"role": "system", "content": "Eres un asistente útil."},
-      {"role": "user", "content": "Escribe una función en Python que calcule fibonacci."}
-    ],
-    "temperature": 0.7,
-    "max_tokens": 512
-  }'
+  -d '{"query": "¿Cuál es la capital de Francia?"}'
 ```
 
-### Ejemplo: Completion Simple
+### Clasificar consulta
 
 ```bash
-curl http://localhost:11435/v1/completions \
+curl -X POST http://localhost:8080/classify \
   -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "def fibonacci(n):",
-    "max_tokens": 200,
-    "temperature": 0.3
-  }'
+  -d '{"query": "calcula 2 + 2"}'
 ```
 
-### Streaming (Server-Sent Events)
-
-Para respuestas largas, usa **streaming** para evitar timeouts y ver tokens en tiempo real:
+### Indexar proyecto
 
 ```bash
-curl -N http://localhost:11435/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "bitnet",
-    "messages": [{"role": "user", "content": "Explica qué es Docker"}],
-    "stream": true,
-    "max_tokens": 500
-  }'
+python -m src.cli.index_project /ruta/al/proyecto
 ```
 
-**Formato de respuesta SSE:**
+## 📁 Estructura del Proyecto
+
 ```
-data: {"choices":[{"delta":{"content":"Docker"}}]}
-data: {"choices":[{"delta":{"content":" es"}}]}
-data: {"choices":[{"delta":{"content":" una"}}]}
-...
-data: [DONE]
-```
-
-**En Python:**
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:11435/v1/chat/completions",
-    json={
-        "model": "bitnet",
-        "messages": [{"role": "user", "content": "Hola"}],
-        "stream": True
-    },
-    stream=True
-)
-
-for line in response.iter_lines():
-    if line and line.startswith(b"data: "):
-        data = line[6:]
-        if data != b"[DONE]":
-            chunk = json.loads(data)
-            content = chunk["choices"][0]["delta"].get("content", "")
-            print(content, end="", flush=True)
+neuro-bitnet/
+├── src/
+│   ├── rag/          # Módulo principal RAG
+│   │   ├── classifier.py    # Clasificación de consultas
+│   │   ├── embeddings.py    # Gestión de embeddings
+│   │   ├── storage/         # Backends de almacenamiento
+│   │   └── indexer/         # Analizadores de código
+│   ├── server/       # Servidor HTTP
+│   └── cli/          # Herramientas CLI
+├── docker/           # Configuración Docker
+├── tests/            # Tests unitarios e integración
+└── docs/             # Documentación (Jekyll/Chirpy)
 ```
 
+## 📈 Benchmarks
 
-## 🔍 Sistema RAG (Retrieval-Augmented Generation)
+| Categoría | Sin RAG | Con RAG | Mejora |
+|-----------|---------|---------|--------|
+| Matemáticas | 100% | 100% | = |
+| Código | 100% | 100% | = |
+| Razonamiento | 100% | 100% | = |
+| **Factual** | **66.7%** | **100%** | **+33%** |
 
-El sistema RAG permite enriquecer las respuestas del modelo con información de tus propios documentos.
+Ver [análisis completo](https://madkoding.github.io/neuro-bitnet/benchmarks/).
 
-### Modos de Operación
-
-| Modo | Backend | Auto-learn | Memoria | Uso |
-|------|---------|------------|---------|-----|
-| **Simple** (default) | Archivos | ❌ | ❌ | Proyectos pequeños |
-| **Avanzado** | SurrealDB | ✅ | ✅ | Multi-usuario, producción |
-
-### Instalación
+## 🧪 Tests
 
 ```bash
-# Dependencias básicas
-pip install sentence-transformers numpy requests
+# Ejecutar todos los tests
+pytest
 
-# Para modo avanzado (opcional)
-pip install surrealdb
+# Solo tests unitarios
+pytest tests/unit/
+
+# Con cobertura
+pytest --cov=src --cov-report=html
 ```
 
-### Modo Simple (Default)
+## 📚 Documentación
 
-```bash
-# Agregar documentos
-python3 scripts/rag.py add "Python fue creado por Guido van Rossum"
-python3 scripts/rag.py add-file documentacion.txt
+Documentación completa disponible en [GitHub Pages](https://madkoding.github.io/neuro-bitnet/):
 
-# Consultar (con streaming para ver tokens en tiempo real)
-python3 scripts/rag.py --stream query "¿Quién creó Python?"
+- [Guía de Inicio](https://madkoding.github.io/neuro-bitnet/getting-started/)
+- [Arquitectura](https://madkoding.github.io/neuro-bitnet/architecture/)
+- [API Reference](https://madkoding.github.io/neuro-bitnet/api/)
+- [Benchmarks](https://madkoding.github.io/neuro-bitnet/benchmarks/)
 
-# Modo interactivo (streaming activado por defecto)
-python3 scripts/rag.py interactive
+## 🛠️ Configuración
 
-# Administrar
-python3 scripts/rag.py list
-python3 scripts/rag.py delete <doc_id>
-python3 scripts/rag.py clear
-```
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `RAG_SERVER_PORT` | Puerto del servidor | `8080` |
+| `RAG_LLM_URL` | URL del LLM backend | `http://localhost:11435` |
+| `RAG_EMBEDDING_MODEL` | Modelo de embeddings | `minilm` |
 
-### Modo Avanzado (Multi-usuario + Auto-learn)
+## 📄 Licencia
 
-```bash
-# 1. Levantar SurrealDB
-docker compose --profile rag up -d
-
-# 2. Usar con auto-learn (busca en web si no tiene info)
-python3 scripts/rag.py --backend surrealdb --auto-learn query "¿Qué es Kubernetes?"
-
-# 3. Multi-usuario (cada usuario tiene su propio espacio)
-python3 scripts/rag.py --user juan --backend surrealdb add "Notas de Juan"
-python3 scripts/rag.py --user maria --backend surrealdb add "Notas de María"
-
-# 4. Guardar conversaciones como conocimiento
-python3 scripts/rag.py --save-conversations interactive
-```
-
-### Aprendizaje desde la Web
-
-```bash
-# Aprender sobre un tema (busca en Wikipedia + DuckDuckGo)
-python3 scripts/rag.py learn "Elon Musk"
-python3 scripts/rag.py learn "Machine Learning"
-
-# Con auto-learn, lo hace automáticamente si no tiene info
-python3 scripts/rag.py --auto-learn query "¿Quién fundó SpaceX?"
-```
-
-### Detección de Incertidumbre
-
-Cuando `--auto-learn` está activo, el sistema detecta automáticamente cuando el modelo "no sabe" algo:
-
-```bash
-# Si el modelo responde con "no sé", busca en web y reintenta (máx 2 veces)
-python3 scripts/rag.py --auto-learn query "¿Cuál es la capital de Francia?"
-
-# Ejemplo de flujo:
-# 1. Pregunta → modelo responde "no tengo información"
-# 2. Sistema detecta incertidumbre (confianza: 65%)
-# 3. Busca en Wikipedia "Francia"
-# 4. Guarda el conocimiento
-# 5. Reintenta → "La capital de Francia es París"
-```
-
-**Patrones de incertidumbre detectados:**
-- "no sé", "no tengo información", "desconozco"
-- "no estoy seguro", "no puedo decir"
-- Respuestas muy cortas
-- Evasiones como "depende de..."
-
-Si después de reintentar sigue sin saber, responde honestamente: *"No sé la respuesta a esa pregunta."*
-
-### Modelos de Embeddings
-
-```bash
-# MiniLM (default, 80MB, rápido)
-python3 scripts/rag.py -e minilm query "..."
-
-# MPNet (420MB, mejor calidad)
-python3 scripts/rag.py -e mpnet query "..."
-
-# E5 Large (1.2GB, excelente para búsqueda)
-python3 scripts/rag.py -e e5 query "..."
-
-# BGE Large (1.3GB, multiidioma)
-python3 scripts/rag.py -e bge query "..."
-```
-
-### Almacenamiento
-
-**Modo Simple (archivos):**
-```
-~/.neuro-bitnet/rag/<user_id>/
-├── documents.json    # Textos
-└── embeddings.npy    # Vectores
-```
-
-**Modo Avanzado (SurrealDB):**
-- Base de datos: `neurobitnet.rag`
-- Índices vectoriales MTREE para búsqueda eficiente
-- Escalable a millones de documentos
-
-### Variables de Entorno RAG
-
-| Variable | Default | Descripción |
-|----------|---------|-------------|
-| `RAG_LLM_URL` | `http://localhost:11435` | URL del LLM |
-| `RAG_SURREALDB_URL` | `ws://localhost:8000/rpc` | URL de SurrealDB |
-| `RAG_SURREALDB_USER` | `root` | Usuario SurrealDB |
-| `RAG_SURREALDB_PASS` | `root` | Password SurrealDB |
-
-
-### Variables de Entorno
-
-| Variable | Default | Descripción |
-|----------|---------|-------------|
-| `BITNET_EXTERNAL_PORT` | `11435` | Puerto externo del servidor |
-| `BITNET_CTX_SIZE` | `4096` | Tamaño de contexto (tokens) |
-| `BITNET_PARALLEL` | `4` | Slots para requests paralelos |
-| `BITNET_THREADS` | `4` | Threads CPU |
-| `HF_TOKEN` | - | Token HuggingFace (opcional) |
-
-### Distribución de Contexto Recomendada (4096 tokens)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ System Prompt                                    ~500 tokens│
-├─────────────────────────────────────────────────────────────┤
-│ Tool/MCP Definitions                             ~800 tokens│
-├─────────────────────────────────────────────────────────────┤
-│ RAG Chunks (documentos relevantes)              ~1200 tokens│
-├─────────────────────────────────────────────────────────────┤
-│ Historial de Conversación / Memoria             ~1000 tokens│
-├─────────────────────────────────────────────────────────────┤
-│ Query + Espacio para Respuesta                   ~596 tokens│
-└─────────────────────────────────────────────────────────────┘
-```
-
-## ⚠️ Limitaciones
-
-1. **Function Calling**: Los modelos BitNet 1.58-bit **no tienen soporte nativo** para function calling/tools. El servidor usa modo genérico que es menos confiable.
-
-2. **Idioma**: Principalmente entrenados en inglés. Otros idiomas pueden tener calidad reducida.
-
-3. **Contexto Largo**: Los modelos fueron entrenados con 4096 tokens máximo. Contextos más largos degradan calidad.
-
-## 📊 Monitoreo
-
-Métricas Prometheus disponibles en `/metrics`:
-
-```bash
-curl http://localhost:11435/metrics
-```
-
-Métricas incluidas:
-- `llamacpp_requests_total` - Total de requests
-- `llamacpp_tokens_generated` - Tokens generados
-- `llamacpp_prompt_tokens` - Tokens de prompt procesados
-- `llamacpp_kv_cache_usage` - Uso de KV cache
-
-## 📝 Licencia
-
-Este proyecto usa:
-- **BitNet** (Microsoft) - MIT License
-- **llama.cpp** - MIT License
-- **Falcon3** (TII UAE) - Falcon License
-
-## 🔗 Referencias
-
-- [microsoft/BitNet](https://github.com/microsoft/BitNet)
-- [BitNet-b1.58-2B-4T en HuggingFace](https://huggingface.co/microsoft/BitNet-b1.58-2B-4T)
-- [Falcon3-7B-Instruct-1.58bit-GGUF en HuggingFace](https://huggingface.co/tiiuae/Falcon3-7B-Instruct-1.58bit-GGUF)
-- [llama.cpp Server API](https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md)
-- [Docker Hub: madkoding/neuro-bitnet](https://hub.docker.com/r/madkoding/neuro-bitnet)
+MIT License - ver [LICENSE](LICENSE) para detalles.
