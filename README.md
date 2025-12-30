@@ -4,14 +4,131 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/madkoding/neuro-bitnet?logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/madkoding/neuro-bitnet/docker-publish.yml?label=Build&logo=github)](https://github.com/madkoding/neuro-bitnet/actions)
 
-Docker container para modelos **BitNet 1.58-bit** con soporte GPU y API compatible con OpenAI.
+Docker container para modelos **BitNet 1.58-bit** con soporte GPU, API compatible con OpenAI y sistema **RAG** integrado.
 
 ## 📦 Modelos Disponibles
+
+### Modelos de Generación (LLM)
 
 | Modelo | Tag Docker | Tamaño | VRAM | Calidad | Velocidad |
 |--------|------------|--------|------|---------|----------|
 | **Falcon3-7B-Instruct** | `falcon-7b` (default) | ~5 GB | ~2 GB | ⭐⭐⭐⭐ | Moderada |
 | **BitNet-b1.58-2B-4T** | `bitnet-2b` | ~4 GB | ~800 MB | ⭐⭐⭐ | ⚡⚡⚡ Rápida |
+
+### Modelos de Embeddings (RAG)
+
+| Modelo | Tamaño | RAM | Calidad | Uso recomendado |
+|--------|--------|-----|---------|-----------------|
+| **all-MiniLM-L6-v2** | 80MB | ~200MB | Buena | FAQs, chatbots básicos |
+| **all-mpnet-base-v2** | 420MB | ~500MB | Muy buena | Documentación técnica |
+| **e5-large-v2** | 1.2GB | ~1.5GB | Excelente | Búsqueda semántica avanzada |
+| **bge-large-en-v1.5** | 1.3GB | ~1.5GB | Excelente | Producción enterprise |
+
+## 🏗️ Arquitectura
+
+El sistema usa **dos modelos separados** que trabajan en conjunto:
+
+```mermaid
+flowchart TB
+    subgraph Cliente["🖥️ Cliente"]
+        User[Usuario]
+    end
+    
+    subgraph RAG["🧠 Sistema RAG"]
+        direction TB
+        Embed[("📊 MiniLM<br/>Embeddings<br/>80MB")]
+        VectorDB[("💾 Vector Store<br/>~/.neuro-bitnet/rag/")]
+    end
+    
+    subgraph LLM["🤖 Servidor LLM"]
+        Falcon[("🦅 Falcon-7B<br/>o BitNet-2B<br/>Puerto 11435")]
+    end
+    
+    User -->|"1. Pregunta"| RAG
+    RAG -->|"2. Embedding query"| Embed
+    Embed -->|"3. Buscar similares"| VectorDB
+    VectorDB -->|"4. Contexto relevante"| RAG
+    RAG -->|"5. Pregunta + Contexto"| Falcon
+    Falcon -->|"6. Respuesta generada"| User
+```
+
+### Diagrama de Secuencia Detallado
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 Usuario
+    participant RAG as 🧠 RAG System
+    participant ML as 📊 MiniLM<br/>(Embeddings)
+    participant VS as 💾 Vector Store
+    participant LLM as 🦅 Falcon-7B<br/>(Generación)
+
+    Note over U,LLM: Fase 1: Agregar Documentos (una sola vez)
+    U->>RAG: add_document("Python fue creado por Guido...")
+    RAG->>ML: encode(texto)
+    ML-->>RAG: vector [384 dims]
+    RAG->>VS: save(doc + vector)
+    VS-->>RAG: ✓ Guardado
+
+    Note over U,LLM: Fase 2: Consulta RAG
+    U->>RAG: query("¿Quién creó Python?")
+    
+    rect rgb(240, 248, 255)
+        Note over RAG,VS: Búsqueda Semántica
+        RAG->>ML: encode(query)
+        ML-->>RAG: query_vector [384 dims]
+        RAG->>VS: search(query_vector, top_k=3)
+        VS-->>RAG: docs similares + scores
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over RAG,LLM: Generación con Contexto
+        RAG->>RAG: Construir prompt con contexto
+        RAG->>LLM: POST /v1/chat/completions<br/>{messages: [system, user+contexto]}
+        LLM-->>RAG: respuesta generada
+    end
+    
+    RAG-->>U: "Python fue creado por Guido van Rossum"
+```
+
+### Flujo de APIs
+
+```mermaid
+flowchart LR
+    subgraph Input["📥 Entrada"]
+        Q[Pregunta del usuario]
+    end
+    
+    subgraph Embeddings["📊 sentence-transformers"]
+        direction TB
+        E1["all-MiniLM-L6-v2"]
+        E2["all-mpnet-base-v2"]
+        E3["e5-large-v2"]
+        E4["bge-large-en-v1.5"]
+    end
+    
+    subgraph Storage["💾 Almacenamiento"]
+        direction TB
+        JSON["documents.json"]
+        NPY["embeddings.npy"]
+    end
+    
+    subgraph LLM["🦅 llama-server:11435"]
+        direction TB
+        EP1["/v1/chat/completions"]
+        EP2["/v1/completions"]
+        EP3["/health"]
+    end
+    
+    subgraph Output["📤 Salida"]
+        R[Respuesta enriquecida]
+    end
+    
+    Q --> Embeddings
+    Embeddings --> Storage
+    Storage --> LLM
+    LLM --> Output
+```
 
 ## 🚀 Inicio Rápido
 
@@ -126,7 +243,84 @@ curl http://localhost:11435/v1/completions \
   }'
 ```
 
-## 🔧 Configuración
+## � Sistema RAG (Retrieval-Augmented Generation)
+
+El sistema RAG permite enriquecer las respuestas del modelo con información de tus propios documentos.
+
+### ¿Cómo funciona?
+
+1. **MiniLM** (u otro modelo de embeddings) convierte texto en vectores
+2. Los vectores se almacenan en un **Vector Store** local
+3. Al hacer una pregunta, se buscan documentos similares
+4. El contexto relevante se envía a **Falcon/BitNet** para generar la respuesta
+
+### Instalación de dependencias
+
+```bash
+pip install sentence-transformers numpy requests
+```
+
+### Uso del RAG
+
+```bash
+# Agregar documentos
+python3 scripts/rag.py add "Python fue creado por Guido van Rossum en 1991"
+python3 scripts/rag.py add "Docker es una plataforma de contenedores"
+
+# Agregar desde archivo
+python3 scripts/rag.py add-file documentacion.txt
+
+# Consultar con RAG
+python3 scripts/rag.py query "¿Quién creó Python?"
+
+# Modo interactivo
+python3 scripts/rag.py interactive
+
+# Listar documentos
+python3 scripts/rag.py list
+
+# Limpiar todos los documentos
+python3 scripts/rag.py clear
+```
+
+### Cambiar modelo de embeddings
+
+```bash
+# MiniLM (default, ligero)
+python3 scripts/rag.py --embedding-model minilm query "¿Qué es Docker?"
+
+# MPNet (mejor calidad)
+python3 scripts/rag.py --embedding-model mpnet query "¿Qué es Docker?"
+
+# E5 Large (excelente para búsqueda)
+python3 scripts/rag.py --embedding-model e5 query "¿Qué es Docker?"
+
+# BGE Large (enterprise)
+python3 scripts/rag.py --embedding-model bge query "¿Qué es Docker?"
+```
+
+### Ejemplo práctico
+
+```bash
+# 1. Agregar conocimiento al sistema
+python3 scripts/rag.py add "neuro-bitnet es un proyecto que ejecuta modelos BitNet 1.58-bit en Docker"
+python3 scripts/rag.py add "Los modelos disponibles son Falcon-7B y BitNet-2B"
+python3 scripts/rag.py add "El sistema soporta GPU NVIDIA con CUDA 12.6"
+
+# 2. Consultar
+python3 scripts/rag.py query "¿Qué modelos soporta neuro-bitnet?"
+# Respuesta: "neuro-bitnet soporta los modelos Falcon-7B y BitNet-2B..."
+```
+
+### Almacenamiento persistente
+
+Los documentos se guardan en:
+- `~/.neuro-bitnet/rag/<modelo>/documents.json` - Textos originales
+- `~/.neuro-bitnet/rag/<modelo>/embeddings.npy` - Vectores
+
+Cada modelo de embeddings tiene su propio directorio para evitar conflictos.
+
+## �🔧 Configuración
 
 ### Variables de Entorno
 
