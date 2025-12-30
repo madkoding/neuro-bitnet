@@ -47,6 +47,10 @@ comments:
 pwa:
   enabled: true
 
+# Mermaid diagrams
+mermaid:
+  enabled: true
+
 # Build Settings
 markdown: kramdown
 highlighter: rouge

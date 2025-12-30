@@ -12,31 +12,49 @@ neuro-bitnet sigue los principios **SOLID** para mantener el código modular, te
 
 ### Diagrama de Alto Nivel
 
+```mermaid
+flowchart TB
+    subgraph Cliente
+        HTTP[HTTP Client]
+        CLI[CLI Tools]
+    end
+    
+    subgraph RAG["RAG Server (Flask)"]
+        direction TB
+        Classifier[Query Classifier]
+        Embeddings[Embeddings Manager]
+        WebSearch[Web Search]
+        
+        subgraph Storage["Storage Layer"]
+            InMemory[InMemoryStorage]
+            FileStore[FileStorage]
+        end
+    end
+    
+    subgraph LLM["LLM Backend"]
+        BitNet[BitNet / Falcon]
+    end
+    
+    HTTP --> RAG
+    CLI --> RAG
+    Classifier --> Embeddings
+    Embeddings --> Storage
+    RAG --> LLM
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Cliente (HTTP/CLI)                       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    RAG Server (Flask)                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Classifier  │  │ Embeddings  │  │     Web Search      │  │
-│  │  (Strategy) │  │  (Encoder)  │  │    (Optional)       │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                              │                               │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │                    Storage (ABCStorage)                  ││
-│  │  ┌────────────────┐    ┌─────────────────────────────┐  ││
-│  │  │ InMemoryStorage│    │      FileStorage            │  ││
-│  │  └────────────────┘    └─────────────────────────────┘  ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    LLM Backend (BitNet)                      │
-└─────────────────────────────────────────────────────────────┘
+
+### Flujo de Clasificación
+
+```mermaid
+flowchart LR
+    Query[Consulta] --> Classify{Clasificar}
+    Classify -->|Math| Direct[LLM Directo]
+    Classify -->|Code| RAGLocal[RAG Local]
+    Classify -->|Factual| RAGWeb[RAG + Web]
+    Classify -->|Greeting| Direct
+    
+    Direct --> Response[Respuesta]
+    RAGLocal --> Response
+    RAGWeb --> Response
 ```
 
 ## Estructura del Proyecto
