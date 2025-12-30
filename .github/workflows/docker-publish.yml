@@ -97,21 +97,6 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           echo "✅ Tagged falcon-7b as latest"
 
-  # Actualizar descripción en Docker Hub
-  update-dockerhub-description:
-    needs: tag-latest
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE_NAME }}
-          short-description: "BitNet 1.58-bit LLM server with OpenAI-compatible API (Falcon-7B & BitNet-2B)"
-          readme-filepath: ./README.md
+  # NOTA: La descripción de Docker Hub se debe actualizar manualmente
+  # La acción peter-evans/dockerhub-description requiere un token con permisos especiales
+  # Visita: https://hub.docker.com/repository/docker/madkoding/neuro-bitnet/general
