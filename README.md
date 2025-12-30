@@ -182,9 +182,7 @@ flowchart LR
         ML["MiniLM/MPNet/E5/BGE"]
     end
     
-    subgraph Decision{"🔀 Backend?"}
-        direction TB
-    end
+    Decision{"🔀 Backend?"}
     
     subgraph Files["📁 Archivos"]
         direction TB
