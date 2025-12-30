@@ -121,11 +121,10 @@ ENV BITNET_PARALLEL=4
 ENV BITNET_GPU_LAYERS=99
 ENV BITNET_THREADS=4
 
-# Configurar MODEL_PATH según variante (usando shell script para lógica condicional)
-# falcon-7b -> /app/models/falcon-7b/*.gguf
-# bitnet-2b -> /app/models/bitnet-2b/*.gguf
+# Configurar MODEL_VARIANT - el entrypoint buscará el GGUF automáticamente
+# falcon-7b -> /app/models/falcon-7b/falcon3-7b-instruct-1.58bit.gguf
+# bitnet-2b -> /app/models/bitnet-2b/ggml-model-i2_s.gguf
 ENV MODEL_VARIANT=${MODEL_VARIANT}
-ENV BITNET_MODEL_PATH=/app/models/${MODEL_VARIANT}/ggml-model-i2_s.gguf
 
 # Exponer puerto
 EXPOSE 8080
