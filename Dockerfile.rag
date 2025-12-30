@@ -1,0 +1,42 @@
+# =============================================================================
+# Dockerfile para RAG Server Inteligente
+# =============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias Python
+RUN pip install --no-cache-dir \
+    flask \
+    requests \
+    numpy \
+    sentence-transformers
+
+# Copiar script del servidor
+COPY scripts/rag_server.py /app/rag_server.py
+
+# Pre-descargar modelo de embeddings (minilm por defecto)
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+# Crear directorio para datos
+RUN mkdir -p /root/.neuro-bitnet/rag
+
+# Variables de entorno
+ENV RAG_SERVER_PORT=8080
+ENV RAG_LLM_URL=http://localhost:11435
+ENV RAG_EMBEDDING_MODEL=minilm
+
+# Puerto
+EXPOSE 8080
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Comando de inicio
+CMD ["python", "rag_server.py", "--host", "0.0.0.0", "--port", "8080"]

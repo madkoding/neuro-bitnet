@@ -19,6 +19,7 @@ docker-compose.override.yml
 # Logs
 logs/
 *.log
+build.log
 
 # IDE
 .idea/
@@ -40,6 +41,11 @@ __pycache__/
 venv/
 .venv/
 ENV/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # Build artifacts
 build/
@@ -48,5 +54,27 @@ dist/
 
 # Temporary files
 tmp/
+*.tmp
+*.temp
+
+# RAG data
+.neuro-bitnet/
+*.npy
+embeddings.npy
+documents.json
+
+# Jekyll
+docs/_site/
+docs/.sass-cache/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/vendor/
+docs/Gemfile.lock
+
+# Old/backup files
+*.old
+*.bak
+*.backup
+README.old.md
 temp/
 *.tmp
