@@ -60,31 +60,48 @@ flowchart LR
 
 ## Estructura del Proyecto
 
-```
-neuro-bitnet/
-├── src/
-│   ├── rag/                 # Módulo principal RAG
-│   │   ├── core.py          # Modelos de datos
-│   │   ├── classifier.py    # Clasificación de consultas
-│   │   ├── embeddings.py    # Gestión de embeddings
-│   │   ├── web_search.py    # Búsqueda web opcional
-│   │   ├── storage/         # Backends de almacenamiento
-│   │   │   ├── base.py      # Interface ABCStorage
-│   │   │   ├── memory.py    # Almacenamiento en memoria
-│   │   │   └── files.py     # Almacenamiento en archivos
-│   │   └── indexer/         # Analizadores de código
-│   │       ├── base.py      # Interface ABCAnalyzer
-│   │       ├── python.py    # Analizador Python (AST)
-│   │       └── generic.py   # Analizador genérico (regex)
-│   ├── server/              # Servidor HTTP
-│   │   └── rag_server.py    # Flask application
-│   └── cli/                 # Herramientas CLI
-│       ├── rag_client.py    # Cliente de consultas
-│       └── index_project.py # Indexador de proyectos
-├── docker/                  # Configuración Docker
-├── tests/                   # Tests unitarios e integración
-└── docs/                    # Documentación (Jekyll)
-```
+<ul class="tree">
+  <li><strong>src/</strong> - Código fuente
+    <ul>
+      <li><strong>rag/</strong> - Módulo principal RAG
+        <ul>
+          <li><code>core.py</code> - Modelos de datos</li>
+          <li><code>classifier.py</code> - Clasificación de consultas</li>
+          <li><code>embeddings.py</code> - Gestión de embeddings</li>
+          <li><code>web_search.py</code> - Búsqueda web opcional</li>
+          <li><strong>storage/</strong> - Backends de almacenamiento
+            <ul>
+              <li><code>base.py</code> - Interface ABCStorage</li>
+              <li><code>memory.py</code> - Almacenamiento en memoria</li>
+              <li><code>files.py</code> - Almacenamiento en archivos</li>
+            </ul>
+          </li>
+          <li><strong>indexer/</strong> - Analizadores de código
+            <ul>
+              <li><code>base.py</code> - Interface ABCAnalyzer</li>
+              <li><code>python.py</code> - Analizador Python (AST)</li>
+              <li><code>generic.py</code> - Analizador genérico (regex)</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li><strong>server/</strong> - Servidor HTTP
+        <ul>
+          <li><code>rag_server.py</code> - Flask application</li>
+        </ul>
+      </li>
+      <li><strong>cli/</strong> - Herramientas CLI
+        <ul>
+          <li><code>rag_client.py</code> - Cliente de consultas</li>
+          <li><code>index_project.py</code> - Indexador de proyectos</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><strong>docker/</strong> - Configuración Docker</li>
+  <li><strong>tests/</strong> - Tests unitarios e integración</li>
+  <li><strong>docs/</strong> - Documentación (Jekyll)</li>
+</ul>
 
 ## Módulos Principales
 

@@ -16,34 +16,61 @@ order: 2
 
 ### Con Docker (Recomendado)
 
+**Clonar repositorio:**
+
 ```bash
-# Clonar repositorio
 git clone https://github.com/madkoding/neuro-bitnet.git
+```
+
+```bash
 cd neuro-bitnet/docker
+```
 
-# Iniciar con modelo BitNet
+**Iniciar con modelo BitNet:**
+
+```bash
 docker compose up -d
+```
 
-# O con modelo Falcon
+**O con modelo Falcon:**
+
+```bash
 BITNET_MODEL=falcon-7b docker compose up -d
 ```
 
 ### Con Python
 
+**Clonar repositorio:**
+
 ```bash
-# Clonar repositorio
 git clone https://github.com/madkoding/neuro-bitnet.git
+```
+
+```bash
 cd neuro-bitnet
+```
 
-# Crear entorno virtual
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+**Crear entorno virtual (Linux/Mac):**
 
-# Instalar dependencias
+```bash
+python -m venv venv && source venv/bin/activate
+```
+
+**Crear entorno virtual (Windows):**
+
+```bash
+python -m venv venv && venv\Scripts\activate
+```
+
+**Instalar dependencias:**
+
+```bash
 pip install -r requirements.txt
+```
 
-# Iniciar servidor
+**Iniciar servidor:**
+
+```bash
 python -m src.server.rag_server
 ```
 
@@ -60,42 +87,48 @@ python -m src.server.rag_server
 
 ### Presets Disponibles
 
-```bash
-# Usar preset balanceado
-source presets/balanced.env
-python -m src.server.rag_server
+**Usar preset balanceado:**
 
-# Usar preset creativo
-source presets/creative.env
-python -m src.server.rag_server
+```bash
+source presets/balanced.env && python -m src.server.rag_server
+```
+
+**Usar preset creativo:**
+
+```bash
+source presets/creative.env && python -m src.server.rag_server
 ```
 
 ## Uso Básico
 
 ### Hacer una consulta
 
-```bash
-# Consulta simple
-curl -X POST http://localhost:8080/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "¿Cuál es la capital de Francia?"}'
+**Consulta simple:**
 
-# Clasificar consulta
-curl -X POST http://localhost:8080/classify \
-  -H "Content-Type: application/json" \
-  -d '{"query": "calcula 2 + 2"}'
+```bash
+curl -X POST http://localhost:8080/query -H "Content-Type: application/json" -d '{"query": "¿Cuál es la capital de Francia?"}'
+```
+
+**Clasificar consulta:**
+
+```bash
+curl -X POST http://localhost:8080/classify -H "Content-Type: application/json" -d '{"query": "calcula 2 + 2"}'
 ```
 
 ### Con el cliente CLI
 
-```bash
-# Consulta interactiva
-python -m src.cli.rag_client query "¿Qué es Python?"
+**Consulta interactiva:**
 
-# Indexar proyecto
+```bash
+python -m src.cli.rag_client query "¿Qué es Python?"
+```
+
+**Indexar proyecto:**
+
+```bash
 python -m src.cli.index_project /ruta/al/proyecto
 ```
 
 ## Siguiente Paso
 
-Ver [Arquitectura](/neuro-bitnet/architecture/) para entender el diseño del sistema.
+Ver [Arquitectura](architecture) para entender el diseño del sistema.

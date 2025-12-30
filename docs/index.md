@@ -35,25 +35,30 @@ La innovación principal es su **clasificador inteligente de consultas** que det
 
 ```bash
 git clone https://github.com/madkoding/neuro-bitnet.git
-cd neuro-bitnet/docker
-docker compose up -d
+```
+
+```bash
+cd neuro-bitnet/docker && docker compose up -d
 ```
 
 ### Con Python
 
 ```bash
 git clone https://github.com/madkoding/neuro-bitnet.git
-cd neuro-bitnet
-pip install -r requirements.txt
+```
+
+```bash
+cd neuro-bitnet && pip install -r requirements.txt
+```
+
+```bash
 python -m src.server.rag_server
 ```
 
 ### Hacer una consulta
 
 ```bash
-curl -X POST http://localhost:8080/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "¿Cuál es la capital de Francia?"}'
+curl -X POST http://localhost:8080/query -H "Content-Type: application/json" -d '{"query": "¿Cuál es la capital de Francia?"}'
 ```
 
 ## 📈 Resultados de Benchmark
@@ -105,15 +110,23 @@ flowchart TB
 
 Las contribuciones son bienvenidas. Por favor, abre un issue primero para discutir los cambios propuestos.
 
-```bash
-# Clonar y configurar entorno de desarrollo
-git clone https://github.com/madkoding/neuro-bitnet.git
-cd neuro-bitnet
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+**Clonar y configurar entorno de desarrollo:**
 
-# Ejecutar tests
+```bash
+git clone https://github.com/madkoding/neuro-bitnet.git
+```
+
+```bash
+cd neuro-bitnet && python -m venv .venv && source .venv/bin/activate
+```
+
+```bash
+pip install -e ".[dev]"
+```
+
+**Ejecutar tests:**
+
+```bash
 pytest
 ```
 
