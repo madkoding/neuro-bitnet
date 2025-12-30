@@ -2,24 +2,40 @@
 """
 BitNet RAG (Retrieval-Augmented Generation)
 ==========================================
-Sistema simple de RAG usando embeddings del propio modelo BitNet.
+Sistema RAG usando sentence-transformers para embeddings y BitNet/Falcon para generación.
 
-Permite agregar conocimiento externo para mejorar las respuestas.
+Modelos de embeddings soportados:
+- all-MiniLM-L6-v2     (80MB,  ~200MB RAM) - Default, rápido
+- all-mpnet-base-v2    (420MB, ~500MB RAM) - Mejor calidad
+- e5-large-v2          (1.2GB, ~1.5GB RAM) - Excelente calidad
+- bge-large-en-v1.5    (1.3GB, ~1.5GB RAM) - Mejor multiidioma
 
 Uso:
-    # Crear base de conocimiento
-    rag = BitNetRAG()
-    rag.add_document("París es la capital de Francia", category="geografía")
-    rag.add_document("Madrid es la capital de España", category="geografía")
+    # CLI interactivo
+    python rag.py -i
     
-    # Consultar con contexto aumentado
-    response = rag.query("¿Cuál es la capital de Francia?")
+    # Consulta directa
+    python rag.py -q "¿Cuál es la capital de Francia?"
+    
+    # Agregar documentos
+    python rag.py --add "París es la capital de Francia"
+    python rag.py --add-file documentos.txt
+    
+    # Cambiar modelo de embeddings
+    python rag.py -i --embedding-model all-mpnet-base-v2
+    
+    # Ver estadísticas
+    python rag.py --stats
 """
 
+import os
 import json
-import numpy as np
-from typing import Optional
-from dataclasses import dataclass, field
+import hashlib
+import argparse
+from pathlib import Path
+from datetime import datetime
+from dataclasses import dataclass, field, asdict
+from typing import Optional, List, Dict, Any
 
 try:
     import requests
@@ -27,12 +43,43 @@ except ImportError:
     print("❌ Instala requests: pip install requests")
     exit(1)
 
+try:
+    import numpy as np
+except ImportError:
+    print("❌ Instala numpy: pip install numpy")
+    exit(1)
+
 # =============================================================================
 # Configuración
 # =============================================================================
 
 DEFAULT_URL = "http://localhost:11435"
-EMBEDDING_DIM = 2048  # BitNet-2B tiene ~2048 dimensiones
+DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_DATA_DIR = Path.home() / ".neuro-bitnet" / "rag"
+
+# Modelos soportados con sus dimensiones
+EMBEDDING_MODELS = {
+    "all-MiniLM-L6-v2": {
+        "dim": 384,
+        "description": "Rápido y ligero (80MB)",
+        "max_seq_length": 256,
+    },
+    "all-mpnet-base-v2": {
+        "dim": 768,
+        "description": "Mejor calidad (420MB)",
+        "max_seq_length": 384,
+    },
+    "e5-large-v2": {
+        "dim": 1024,
+        "description": "Excelente calidad (1.2GB)",
+        "max_seq_length": 512,
+    },
+    "bge-large-en-v1.5": {
+        "dim": 1024,
+        "description": "Mejor multiidioma (1.3GB)",
+        "max_seq_length": 512,
+    },
+}
 
 # =============================================================================
 # Estructuras de datos
@@ -41,10 +88,11 @@ EMBEDDING_DIM = 2048  # BitNet-2B tiene ~2048 dimensiones
 @dataclass
 class Document:
     """Un documento en la base de conocimiento."""
+    id: str
     text: str
-    embedding: np.ndarray
     category: str = "general"
-    metadata: dict = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 @dataclass
 class SearchResult:
@@ -53,429 +101,558 @@ class SearchResult:
     score: float
 
 # =============================================================================
-# Cliente de Embeddings
+# Embedding Client (sentence-transformers)
 # =============================================================================
 
 class EmbeddingClient:
-    """Cliente para obtener embeddings del servidor BitNet."""
+    """Cliente para generar embeddings con sentence-transformers."""
+    
+    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
+        self.model_name = model_name
+        self.model = None
+        self._load_model()
+    
+    def _load_model(self):
+        """Carga el modelo de embeddings."""
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            print("❌ Instala sentence-transformers: pip install sentence-transformers")
+            exit(1)
+        
+        print(f"📦 Cargando modelo de embeddings: {self.model_name}...")
+        
+        # Para e5, necesita prefijo especial
+        if "e5" in self.model_name.lower():
+            self.prefix = "query: "
+        else:
+            self.prefix = ""
+        
+        self.model = SentenceTransformer(self.model_name)
+        self.dim = EMBEDDING_MODELS.get(self.model_name, {}).get("dim", 384)
+        print(f"✅ Modelo cargado (dim={self.dim})")
+    
+    def get_embedding(self, text: str) -> np.ndarray:
+        """Genera embedding para un texto."""
+        text_with_prefix = self.prefix + text if self.prefix else text
+        return self.model.encode(text_with_prefix, convert_to_numpy=True)
+    
+    def get_embeddings_batch(self, texts: List[str]) -> np.ndarray:
+        """Genera embeddings para múltiples textos."""
+        texts_with_prefix = [self.prefix + t if self.prefix else t for t in texts]
+        return self.model.encode(texts_with_prefix, convert_to_numpy=True)
+
+# =============================================================================
+# Vector Store (persistente en disco)
+# =============================================================================
+
+class VectorStore:
+    """Almacén de vectores con persistencia en disco."""
+    
+    def __init__(self, data_dir: Path, embedding_dim: int):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.embedding_dim = embedding_dim
+        
+        self.documents_file = self.data_dir / "documents.json"
+        self.embeddings_file = self.data_dir / "embeddings.npy"
+        
+        self.documents: List[Document] = []
+        self.embeddings: Optional[np.ndarray] = None
+        
+        self._load()
+    
+    def _load(self):
+        """Carga documentos y embeddings desde disco."""
+        if self.documents_file.exists():
+            with open(self.documents_file, 'r') as f:
+                data = json.load(f)
+                self.documents = [Document(**doc) for doc in data]
+        
+        if self.embeddings_file.exists():
+            self.embeddings = np.load(self.embeddings_file)
+    
+    def _save(self):
+        """Guarda documentos y embeddings a disco."""
+        with open(self.documents_file, 'w') as f:
+            json.dump([asdict(doc) for doc in self.documents], f, indent=2)
+        
+        if self.embeddings is not None:
+            np.save(self.embeddings_file, self.embeddings)
+    
+    def add(self, document: Document, embedding: np.ndarray):
+        """Agrega un documento con su embedding."""
+        self.documents.append(document)
+        
+        if self.embeddings is None:
+            self.embeddings = embedding.reshape(1, -1)
+        else:
+            self.embeddings = np.vstack([self.embeddings, embedding])
+        
+        self._save()
+    
+    def search(self, query_embedding: np.ndarray, top_k: int = 5) -> List[SearchResult]:
+        """Busca documentos similares por cosine similarity."""
+        if self.embeddings is None or len(self.documents) == 0:
+            return []
+        
+        # Normalizar para cosine similarity
+        query_norm = query_embedding / np.linalg.norm(query_embedding)
+        embeddings_norm = self.embeddings / np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+        
+        # Calcular similitud
+        similarities = np.dot(embeddings_norm, query_norm)
+        
+        # Obtener top_k
+        top_indices = np.argsort(similarities)[::-1][:top_k]
+        
+        results = []
+        for idx in top_indices:
+            results.append(SearchResult(
+                document=self.documents[idx],
+                score=float(similarities[idx])
+            ))
+        
+        return results
+    
+    def delete(self, doc_id: str) -> bool:
+        """Elimina un documento por ID."""
+        for i, doc in enumerate(self.documents):
+            if doc.id == doc_id:
+                self.documents.pop(i)
+                if self.embeddings is not None:
+                    self.embeddings = np.delete(self.embeddings, i, axis=0)
+                    if len(self.embeddings) == 0:
+                        self.embeddings = None
+                self._save()
+                return True
+        return False
+    
+    def clear(self):
+        """Elimina todos los documentos."""
+        self.documents = []
+        self.embeddings = None
+        self._save()
+    
+    def stats(self) -> Dict[str, Any]:
+        """Retorna estadísticas de la base de datos."""
+        categories = {}
+        for doc in self.documents:
+            categories[doc.category] = categories.get(doc.category, 0) + 1
+        
+        return {
+            "total_documents": len(self.documents),
+            "embedding_dim": self.embedding_dim,
+            "categories": categories,
+            "storage_size_mb": self._get_storage_size(),
+        }
+    
+    def _get_storage_size(self) -> float:
+        """Calcula el tamaño en MB del almacenamiento."""
+        size = 0
+        if self.documents_file.exists():
+            size += self.documents_file.stat().st_size
+        if self.embeddings_file.exists():
+            size += self.embeddings_file.stat().st_size
+        return round(size / (1024 * 1024), 2)
+
+# =============================================================================
+# BitNet/Falcon Client (para generación)
+# =============================================================================
+
+class LLMClient:
+    """Cliente para el servidor BitNet/Falcon."""
     
     def __init__(self, base_url: str = DEFAULT_URL):
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
     
-    def get_embedding(self, text: str) -> np.ndarray:
-        """Obtiene el embedding de un texto."""
-        response = self.session.post(
-            f"{self.base_url}/v1/embeddings",
-            json={
-                "input": text,
-                "model": "bitnet"
-            },
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"Error getting embedding: {response.text}")
-        
-        data = response.json()
-        embedding = data["data"][0]["embedding"]
-        return np.array(embedding, dtype=np.float32)
+    def health_check(self) -> bool:
+        """Verifica si el servidor está disponible."""
+        try:
+            r = self.session.get(f"{self.base_url}/health", timeout=5)
+            return r.status_code == 200
+        except:
+            return False
     
-    def get_embeddings_batch(self, texts: list[str]) -> list[np.ndarray]:
-        """Obtiene embeddings de múltiples textos."""
-        response = self.session.post(
-            f"{self.base_url}/v1/embeddings",
-            json={
-                "input": texts,
-                "model": "bitnet"
-            },
-            timeout=60
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"Error getting embeddings: {response.text}")
-        
-        data = response.json()
-        return [np.array(item["embedding"], dtype=np.float32) for item in data["data"]]
-
-# =============================================================================
-# Base de conocimiento vectorial
-# =============================================================================
-
-class VectorStore:
-    """Almacén de vectores con búsqueda híbrida (embeddings + keywords)."""
-    
-    def __init__(self):
-        self.documents: list[Document] = []
-        self._text_index: set[str] = set()  # Para evitar duplicados
-    
-    def add(self, document: Document):
-        """Agrega un documento (evita duplicados)."""
-        # Evitar duplicados basados en texto
-        if document.text in self._text_index:
-            return
-        self._text_index.add(document.text)
-        self.documents.append(document)
-    
-    def search(self, query_embedding: np.ndarray, query_text: str = "", 
-               top_k: int = 3, category: Optional[str] = None) -> list[SearchResult]:
-        """Búsqueda híbrida: embeddings + keywords."""
-        if not self.documents:
-            return []
-        
-        results = []
-        # Normalizar query para matching
-        query_lower = query_text.lower()
-        query_words = set(self._normalize_text(query_text).split())
-        
-        for doc in self.documents:
-            # Filtrar por categoría si se especifica
-            if category and doc.category != category:
-                continue
-            
-            # Score por embeddings (similitud coseno)
-            embedding_score = self._cosine_similarity(query_embedding, doc.embedding)
-            
-            # Score por keywords mejorado
-            keyword_score = self._keyword_score(query_lower, query_words, doc.text)
-            
-            # Score combinado: 30% embeddings + 70% keywords 
-            # (keywords más peso porque embeddings del modelo no son ideales)
-            combined_score = 0.3 * embedding_score + 0.7 * keyword_score
-            
-            results.append(SearchResult(document=doc, score=combined_score))
-        
-        # Ordenar por score descendente
-        results.sort(key=lambda x: x.score, reverse=True)
-        return results[:top_k]
-    
-    def _normalize_text(self, text: str) -> str:
-        """Normaliza texto removiendo acentos y puntuación."""
-        import unicodedata
-        # Remover acentos
-        text = unicodedata.normalize('NFD', text)
-        text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
-        # Remover puntuación
-        text = ''.join(c if c.isalnum() or c.isspace() else ' ' for c in text)
-        return text.lower()
-    
-    def _keyword_score(self, query_lower: str, query_words: set, doc_text: str) -> float:
-        """Calcula score basado en matching de keywords."""
-        doc_lower = doc_text.lower()
-        doc_normalized = self._normalize_text(doc_text)
-        doc_words = set(doc_normalized.split())
-        
-        score = 0.0
-        
-        # 1. Matching exacto de frases clave en la query (peso alto)
-        key_phrases = ['capital de', 'capital of']
-        for phrase in key_phrases:
-            if phrase in query_lower and phrase in doc_lower:
-                score += 0.3
-        
-        # 2. Matching de palabras importantes (sustantivos propios)
-        important_words = [w for w in query_words if len(w) > 3]
-        if important_words:
-            matching = sum(1 for w in important_words if w in doc_normalized)
-            score += 0.5 * (matching / len(important_words))
-        
-        # 3. Matching de todas las palabras
-        if query_words:
-            all_matching = len(query_words & doc_words)
-            score += 0.2 * (all_matching / len(query_words))
-        
-        return min(score, 1.0)  # Normalizar a máximo 1.0
-    
-    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Calcula similitud coseno entre dos vectores."""
-        dot_product = np.dot(a, b)
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return float(dot_product / (norm_a * norm_b))
-    
-    def save(self, filepath: str):
-        """Guarda la base de conocimiento en disco."""
-        data = []
-        for doc in self.documents:
-            data.append({
-                "text": doc.text,
-                "embedding": doc.embedding.tolist(),
-                "category": doc.category,
-                "metadata": doc.metadata
-            })
-        with open(filepath, 'w') as f:
-            json.dump(data, f)
-    
-    def load(self, filepath: str):
-        """Carga la base de conocimiento desde disco."""
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        
-        self.documents = []
-        for item in data:
-            doc = Document(
-                text=item["text"],
-                embedding=np.array(item["embedding"], dtype=np.float32),
-                category=item.get("category", "general"),
-                metadata=item.get("metadata", {})
-            )
-            self.documents.append(doc)
-
-# =============================================================================
-# Sistema RAG
-# =============================================================================
-
-class BitNetRAG:
-    """Sistema RAG completo para BitNet."""
-    
-    def __init__(self, base_url: str = DEFAULT_URL):
-        self.base_url = base_url
-        self.embedding_client = EmbeddingClient(base_url)
-        self.vector_store = VectorStore()
-        self.session = requests.Session()
-        
-        # System prompt base
-        self.system_prompt = """Eres un asistente de IA preciso y útil.
-
-CONTEXTO RELEVANTE:
-{context}
-
-INSTRUCCIONES:
-- Usa el contexto proporcionado para responder
-- Si la respuesta está en el contexto, úsala directamente
-- Si no está en el contexto, responde basándote en tu conocimiento
-- Responde en el mismo idioma que el usuario
-- Sé conciso y preciso"""
-    
-    def add_document(self, text: str, category: str = "general", 
-                     metadata: Optional[dict] = None):
-        """Agrega un documento a la base de conocimiento."""
-        embedding = self.embedding_client.get_embedding(text)
-        doc = Document(
-            text=text,
-            embedding=embedding,
-            category=category,
-            metadata=metadata or {}
-        )
-        self.vector_store.add(doc)
-        return doc
-    
-    def add_documents(self, texts: list[str], category: str = "general"):
-        """Agrega múltiples documentos de forma eficiente."""
-        embeddings = self.embedding_client.get_embeddings_batch(texts)
-        for text, embedding in zip(texts, embeddings):
-            doc = Document(
-                text=text,
-                embedding=embedding,
-                category=category,
-                metadata={}
-            )
-            self.vector_store.add(doc)
-    
-    def search(self, query: str, top_k: int = 3, 
-               category: Optional[str] = None) -> list[SearchResult]:
-        """Busca documentos relevantes para una consulta."""
-        query_embedding = self.embedding_client.get_embedding(query)
-        return self.vector_store.search(query_embedding, query, top_k, category)
-    
-    def query(self, question: str, top_k: int = 3, 
-              category: Optional[str] = None,
-              max_tokens: int = 200,
-              temperature: float = 0.3) -> dict:
-        """Responde una pregunta usando RAG."""
-        
-        # 1. Buscar documentos relevantes
-        results = self.search(question, top_k, category)
-        
-        # 2. Construir contexto
-        if results:
-            context_parts = []
-            for i, r in enumerate(results, 1):
-                context_parts.append(f"{i}. {r.document.text} (relevancia: {r.score:.2f})")
-            context = "\n".join(context_parts)
-        else:
-            context = "No se encontró contexto relevante."
-        
-        # 3. Construir prompt con contexto
-        system_content = self.system_prompt.format(context=context)
-        
-        # 4. Hacer la consulta
+    def chat(self, messages: List[Dict], max_tokens: int = 500, temperature: float = 0.7) -> str:
+        """Genera una respuesta del modelo."""
         response = self.session.post(
             f"{self.base_url}/v1/chat/completions",
             json={
                 "model": "bitnet",
-                "messages": [
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": question}
-                ],
+                "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": temperature
+                "temperature": temperature,
             },
-            timeout=60
+            timeout=120
         )
         
-        data = response.json()
-        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if response.status_code != 200:
+            raise Exception(f"Error: {response.text}")
         
-        return {
-            "answer": answer,
-            "context": context,
-            "sources": [r.document.text for r in results],
-            "scores": [r.score for r in results]
-        }
-    
-    def save(self, filepath: str):
-        """Guarda la base de conocimiento."""
-        self.vector_store.save(filepath)
-    
-    def load(self, filepath: str):
-        """Carga la base de conocimiento."""
-        self.vector_store.load(filepath)
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
 
 # =============================================================================
-# Base de conocimiento predefinida
+# RAG System
 # =============================================================================
 
-DEFAULT_KNOWLEDGE = [
-    # Geografía - Capitales
-    "París es la capital de Francia, un país de Europa occidental.",
-    "Madrid es la capital de España, un país de la península ibérica.",
-    "Londres es la capital del Reino Unido, formado por Inglaterra, Escocia, Gales e Irlanda del Norte.",
-    "Tokio es la capital de Japón, un país insular del este de Asia.",
-    "Berlín es la capital de Alemania, el país más poblado de la Unión Europea.",
-    "Roma es la capital de Italia, conocida por su historia y arquitectura antigua.",
-    "Washington D.C. es la capital de Estados Unidos de América.",
-    "Pekín (Beijing) es la capital de China, el país más poblado del mundo.",
-    "Moscú es la capital de Rusia, el país más extenso del mundo.",
-    "Buenos Aires es la capital de Argentina, en América del Sur.",
-    "Ciudad de México es la capital de México, en América del Norte.",
-    "Brasilia es la capital de Brasil, el país más grande de Sudamérica.",
+class BitNetRAG:
+    """Sistema RAG completo."""
     
-    # Ciencia
-    "El agua tiene la fórmula química H2O, compuesta por hidrógeno y oxígeno.",
-    "La velocidad de la luz es aproximadamente 299,792 kilómetros por segundo.",
-    "Albert Einstein desarrolló la teoría de la relatividad en el siglo XX.",
-    "El ADN contiene la información genética de los seres vivos.",
-    "La gravedad es la fuerza que atrae los objetos hacia el centro de la Tierra.",
+    def __init__(
+        self,
+        llm_url: str = DEFAULT_URL,
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        data_dir: Optional[Path] = None,
+    ):
+        self.llm_url = llm_url
+        self.embedding_model_name = embedding_model
+        
+        # Validar modelo de embeddings
+        if embedding_model not in EMBEDDING_MODELS:
+            available = ", ".join(EMBEDDING_MODELS.keys())
+            raise ValueError(f"Modelo no soportado: {embedding_model}. Disponibles: {available}")
+        
+        # Directorio de datos (incluye nombre del modelo para separar)
+        if data_dir is None:
+            data_dir = DEFAULT_DATA_DIR / embedding_model.replace("/", "_")
+        self.data_dir = Path(data_dir)
+        
+        # Inicializar componentes
+        self.embedding_client = EmbeddingClient(embedding_model)
+        self.vector_store = VectorStore(self.data_dir, self.embedding_client.dim)
+        self.llm_client = LLMClient(llm_url)
+        
+        print(f"📁 Base de datos: {self.data_dir}")
+        print(f"📊 Documentos cargados: {len(self.vector_store.documents)}")
     
-    # Tecnología
-    "Python es un lenguaje de programación de alto nivel, interpretado y de propósito general.",
-    "JavaScript es el lenguaje de programación principal para desarrollo web en navegadores.",
-    "Git es un sistema de control de versiones distribuido creado por Linus Torvalds.",
-    "Docker es una plataforma para desarrollar y ejecutar aplicaciones en contenedores.",
-    "Linux es un sistema operativo de código abierto basado en Unix.",
+    def add_document(self, text: str, category: str = "general", metadata: Dict = None) -> str:
+        """Agrega un documento a la base de conocimiento."""
+        # Generar ID único
+        doc_id = hashlib.md5(text.encode()).hexdigest()[:12]
+        
+        # Verificar si ya existe
+        for doc in self.vector_store.documents:
+            if doc.id == doc_id:
+                print(f"⚠️  Documento ya existe: {doc_id}")
+                return doc_id
+        
+        # Crear documento
+        document = Document(
+            id=doc_id,
+            text=text,
+            category=category,
+            metadata=metadata or {},
+        )
+        
+        # Generar embedding
+        embedding = self.embedding_client.get_embedding(text)
+        
+        # Guardar
+        self.vector_store.add(document, embedding)
+        
+        print(f"✅ Documento agregado: {doc_id} ({category})")
+        return doc_id
     
-    # Matemáticas
-    "Pi (π) es aproximadamente 3.14159, la relación entre circunferencia y diámetro de un círculo.",
-    "El teorema de Pitágoras establece que a² + b² = c² en triángulos rectángulos.",
-    "El factorial de n (n!) es el producto de todos los enteros positivos menores o iguales a n.",
-]
+    def add_documents_from_file(self, file_path: str, category: str = "general") -> int:
+        """Agrega documentos desde un archivo (uno por línea)."""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
+        
+        count = 0
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    self.add_document(line, category=category)
+                    count += 1
+        
+        print(f"📄 {count} documentos agregados desde {file_path}")
+        return count
+    
+    def search(self, query: str, top_k: int = 3) -> List[SearchResult]:
+        """Busca documentos relevantes."""
+        query_embedding = self.embedding_client.get_embedding(query)
+        return self.vector_store.search(query_embedding, top_k=top_k)
+    
+    def query(
+        self,
+        question: str,
+        top_k: int = 3,
+        max_tokens: int = 500,
+        temperature: float = 0.7,
+        show_context: bool = False,
+    ) -> str:
+        """Responde una pregunta usando RAG."""
+        
+        # Buscar contexto relevante
+        results = self.search(question, top_k=top_k)
+        
+        if not results:
+            context = "No hay información relevante en la base de conocimiento."
+        else:
+            context_parts = []
+            for i, r in enumerate(results, 1):
+                context_parts.append(f"[{i}] {r.document.text}")
+            context = "\n".join(context_parts)
+        
+        if show_context:
+            print("\n📚 Contexto encontrado:")
+            for r in results:
+                print(f"  [{r.score:.3f}] {r.document.text[:100]}...")
+            print()
+        
+        # Construir prompt con contexto
+        system_prompt = """Eres un asistente útil. Usa el contexto proporcionado para responder.
+Si la información no está en el contexto, indica que no tienes esa información.
+Responde en el mismo idioma que la pregunta."""
 
-def create_default_knowledge(rag: BitNetRAG):
-    """Carga la base de conocimiento predefinida."""
-    print("📚 Cargando base de conocimiento predefinida...")
+        user_prompt = f"""Contexto:
+{context}
+
+Pregunta: {question}
+
+Respuesta:"""
+        
+        # Generar respuesta
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        
+        return self.llm_client.chat(messages, max_tokens=max_tokens, temperature=temperature)
     
-    # Categorizar documentos
-    geografia = [d for d in DEFAULT_KNOWLEDGE if "capital" in d.lower()]
-    ciencia = [d for d in DEFAULT_KNOWLEDGE if any(w in d.lower() for w in ["agua", "luz", "einstein", "adn", "gravedad"])]
-    tecnologia = [d for d in DEFAULT_KNOWLEDGE if any(w in d.lower() for w in ["python", "javascript", "git", "docker", "linux"])]
-    matematicas = [d for d in DEFAULT_KNOWLEDGE if any(w in d.lower() for w in ["pi", "pitágoras", "factorial"])]
+    def delete_document(self, doc_id: str) -> bool:
+        """Elimina un documento."""
+        return self.vector_store.delete(doc_id)
     
-    for text in geografia:
-        rag.add_document(text, category="geografía")
-    for text in ciencia:
-        rag.add_document(text, category="ciencia")
-    for text in tecnologia:
-        rag.add_document(text, category="tecnología")
-    for text in matematicas:
-        rag.add_document(text, category="matemáticas")
+    def clear_all(self):
+        """Elimina todos los documentos."""
+        self.vector_store.clear()
+        print("🗑️  Base de conocimiento limpiada")
     
-    print(f"✅ Cargados {len(rag.vector_store.documents)} documentos")
+    def stats(self) -> Dict[str, Any]:
+        """Retorna estadísticas del sistema."""
+        stats = self.vector_store.stats()
+        stats["embedding_model"] = self.embedding_model_name
+        stats["llm_url"] = self.llm_url
+        return stats
+    
+    def list_documents(self, category: Optional[str] = None, limit: int = 20) -> List[Document]:
+        """Lista documentos en la base de conocimiento."""
+        docs = self.vector_store.documents
+        if category:
+            docs = [d for d in docs if d.category == category]
+        return docs[:limit]
 
 # =============================================================================
 # CLI
 # =============================================================================
 
-def main():
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="BitNet RAG System")
-    parser.add_argument("--url", default=DEFAULT_URL, help="URL del servidor BitNet")
-    parser.add_argument("--load", help="Cargar base de conocimiento desde archivo")
-    parser.add_argument("--save", help="Guardar base de conocimiento en archivo")
-    parser.add_argument("--query", "-q", help="Pregunta a responder")
-    parser.add_argument("--interactive", "-i", action="store_true", help="Modo interactivo")
-    parser.add_argument("--no-default", action="store_true", help="No cargar conocimiento predefinido")
-    args = parser.parse_args()
-    
-    print("🤖 BitNet RAG System")
-    print(f"🔗 Servidor: {args.url}")
+def interactive_mode(rag: BitNetRAG):
+    """Modo interactivo."""
+    print("\n" + "=" * 60)
+    print("🤖 BitNet RAG - Modo Interactivo")
+    print("=" * 60)
+    print("Comandos:")
+    print("  /add <texto>     - Agregar documento")
+    print("  /search <query>  - Buscar sin generar respuesta")
+    print("  /list [cat]      - Listar documentos")
+    print("  /stats           - Ver estadísticas")
+    print("  /clear           - Limpiar base de conocimiento")
+    print("  /context         - Toggle mostrar contexto")
+    print("  /help            - Mostrar ayuda")
+    print("  /quit            - Salir")
+    print("=" * 60)
     print()
     
-    # Verificar servidor
-    try:
-        r = requests.get(f"{args.url}/health", timeout=5)
-        if r.status_code != 200:
-            print("❌ Servidor no disponible")
-            return
-    except:
-        print("❌ No se puede conectar al servidor")
-        return
+    show_context = False
     
-    # Crear RAG
-    rag = BitNetRAG(args.url)
-    
-    # Cargar conocimiento
-    if args.load:
-        print(f"📂 Cargando desde {args.load}...")
-        rag.load(args.load)
-        print(f"✅ Cargados {len(rag.vector_store.documents)} documentos")
-    elif not args.no_default:
-        create_default_knowledge(rag)
-    
-    # Guardar si se especifica
-    if args.save:
-        print(f"💾 Guardando en {args.save}...")
-        rag.save(args.save)
-        print("✅ Guardado")
-    
-    # Modo consulta única
-    if args.query:
-        print(f"\n❓ Pregunta: {args.query}")
-        result = rag.query(args.query)
-        print(f"\n💬 Respuesta: {result['answer']}")
-        print(f"\n📚 Fuentes usadas:")
-        for i, (source, score) in enumerate(zip(result['sources'], result['scores']), 1):
-            print(f"   {i}. [{score:.2f}] {source[:80]}...")
-        return
-    
-    # Modo interactivo
-    if args.interactive:
-        print("\n🎯 Modo interactivo (escribe 'salir' para terminar)")
-        print("-" * 50)
+    while True:
+        try:
+            user_input = input("📝 Tú: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n👋 ¡Adiós!")
+            break
         
-        while True:
-            try:
-                question = input("\n❓ Tu pregunta: ").strip()
-                if question.lower() in ['salir', 'exit', 'quit', 'q']:
-                    print("👋 ¡Hasta luego!")
-                    break
-                if not question:
-                    continue
-                
-                print("🔍 Buscando contexto relevante...")
-                result = rag.query(question)
-                
-                print(f"\n💬 Respuesta: {result['answer']}")
-                print(f"\n📚 Contexto usado:")
-                for i, (source, score) in enumerate(zip(result['sources'], result['scores']), 1):
-                    print(f"   {i}. [{score:.2f}] {source[:60]}...")
-                    
-            except KeyboardInterrupt:
-                print("\n👋 ¡Hasta luego!")
+        if not user_input:
+            continue
+        
+        # Comandos
+        if user_input.startswith('/'):
+            parts = user_input.split(' ', 1)
+            cmd = parts[0].lower()
+            arg = parts[1] if len(parts) > 1 else ""
+            
+            if cmd == '/quit' or cmd == '/exit':
+                print("👋 ¡Adiós!")
                 break
+            
+            elif cmd == '/add':
+                if arg:
+                    rag.add_document(arg)
+                else:
+                    print("❌ Uso: /add <texto>")
+            
+            elif cmd == '/search':
+                if arg:
+                    results = rag.search(arg)
+                    print("\n🔍 Resultados:")
+                    for r in results:
+                        print(f"  [{r.score:.3f}] {r.document.text[:80]}...")
+                    print()
+                else:
+                    print("❌ Uso: /search <query>")
+            
+            elif cmd == '/list':
+                docs = rag.list_documents(category=arg if arg else None)
+                print(f"\n📋 Documentos ({len(docs)}):")
+                for doc in docs:
+                    print(f"  [{doc.id}] ({doc.category}) {doc.text[:60]}...")
+                print()
+            
+            elif cmd == '/stats':
+                stats = rag.stats()
+                print("\n📊 Estadísticas:")
+                print(f"  Modelo embeddings: {stats['embedding_model']}")
+                print(f"  Documentos: {stats['total_documents']}")
+                print(f"  Dimensión: {stats['embedding_dim']}")
+                print(f"  Tamaño: {stats['storage_size_mb']} MB")
+                print(f"  Categorías: {stats['categories']}")
+                print()
+            
+            elif cmd == '/clear':
+                confirm = input("⚠️  ¿Eliminar todos los documentos? (s/N): ")
+                if confirm.lower() == 's':
+                    rag.clear_all()
+            
+            elif cmd == '/context':
+                show_context = not show_context
+                print(f"📚 Mostrar contexto: {'ON' if show_context else 'OFF'}")
+            
+            elif cmd == '/help':
+                print("\nComandos disponibles:")
+                print("  /add <texto>     - Agregar documento")
+                print("  /search <query>  - Buscar sin generar respuesta")
+                print("  /list [cat]      - Listar documentos")
+                print("  /stats           - Ver estadísticas")
+                print("  /clear           - Limpiar base de conocimiento")
+                print("  /context         - Toggle mostrar contexto")
+                print("  /quit            - Salir")
+                print()
+            
+            else:
+                print(f"❌ Comando desconocido: {cmd}")
+        
+        else:
+            # Consulta RAG
+            try:
+                response = rag.query(user_input, show_context=show_context)
+                print(f"\n🤖 Asistente: {response}\n")
+            except Exception as e:
+                print(f"❌ Error: {e}\n")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="BitNet RAG - Retrieval-Augmented Generation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Modelos de embeddings disponibles:
+  all-MiniLM-L6-v2    (default) Rápido y ligero (80MB)
+  all-mpnet-base-v2             Mejor calidad (420MB)
+  e5-large-v2                   Excelente calidad (1.2GB)
+  bge-large-en-v1.5             Mejor multiidioma (1.3GB)
+
+Ejemplos:
+  python rag.py -i                           # Modo interactivo
+  python rag.py -q "¿Qué es Python?"         # Consulta directa
+  python rag.py --add "Python es un lenguaje"  # Agregar documento
+  python rag.py --embedding-model all-mpnet-base-v2 -i  # Usar modelo más grande
+        """
+    )
+    
+    parser.add_argument("-i", "--interactive", action="store_true",
+                        help="Modo interactivo")
+    parser.add_argument("-q", "--query", type=str,
+                        help="Consulta directa")
+    parser.add_argument("--add", type=str,
+                        help="Agregar documento")
+    parser.add_argument("--add-file", type=str,
+                        help="Agregar documentos desde archivo")
+    parser.add_argument("--category", type=str, default="general",
+                        help="Categoría para documentos (default: general)")
+    parser.add_argument("--stats", action="store_true",
+                        help="Mostrar estadísticas")
+    parser.add_argument("--list", action="store_true",
+                        help="Listar documentos")
+    parser.add_argument("--clear", action="store_true",
+                        help="Limpiar base de conocimiento")
+    parser.add_argument("--url", type=str, default=DEFAULT_URL,
+                        help=f"URL del servidor LLM (default: {DEFAULT_URL})")
+    parser.add_argument("--embedding-model", "-e", type=str, default=DEFAULT_EMBEDDING_MODEL,
+                        choices=list(EMBEDDING_MODELS.keys()),
+                        help=f"Modelo de embeddings (default: {DEFAULT_EMBEDDING_MODEL})")
+    parser.add_argument("--show-context", "-c", action="store_true",
+                        help="Mostrar contexto encontrado")
+    
+    args = parser.parse_args()
+    
+    print("\n🧠 BitNet RAG")
+    print("=" * 60)
+    
+    # Inicializar RAG
+    try:
+        rag = BitNetRAG(
+            llm_url=args.url,
+            embedding_model=args.embedding_model,
+        )
+    except Exception as e:
+        print(f"❌ Error inicializando RAG: {e}")
+        exit(1)
+    
+    # Verificar servidor LLM
+    if not rag.llm_client.health_check():
+        print(f"⚠️  Servidor LLM no disponible en {args.url}")
+        print("   Las consultas RAG no funcionarán, pero puedes agregar documentos.")
+    else:
+        print(f"✅ Servidor LLM disponible")
+    
+    # Ejecutar acción
+    if args.stats:
+        stats = rag.stats()
+        print("\n📊 Estadísticas:")
+        for k, v in stats.items():
+            print(f"  {k}: {v}")
+    
+    elif args.list:
+        docs = rag.list_documents()
+        print(f"\n📋 Documentos ({len(docs)}):")
+        for doc in docs:
+            print(f"  [{doc.id}] ({doc.category}) {doc.text[:60]}...")
+    
+    elif args.clear:
+        confirm = input("⚠️  ¿Eliminar todos los documentos? (s/N): ")
+        if confirm.lower() == 's':
+            rag.clear_all()
+    
+    elif args.add:
+        rag.add_document(args.add, category=args.category)
+    
+    elif args.add_file:
+        rag.add_documents_from_file(args.add_file, category=args.category)
+    
+    elif args.query:
+        response = rag.query(args.query, show_context=args.show_context)
+        print(f"\n🤖 Respuesta:\n{response}\n")
+    
+    elif args.interactive:
+        interactive_mode(rag)
+    
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()

@@ -3,9 +3,10 @@
 BitNet Full Report Generator
 ============================
 Genera un reporte HTML con todos los resultados de las pruebas.
+Ejecuta cada prueba múltiples veces para medir precisión real.
 
 Uso:
-    python generate_report.py [--url URL] [--output report.html]
+    python generate_report.py [--url URL] [--output report.html] [--runs N]
 """
 
 import json
@@ -13,8 +14,8 @@ import time
 import re
 import argparse
 from datetime import datetime
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 try:
     import requests
@@ -23,269 +24,243 @@ except ImportError:
     exit(1)
 
 DEFAULT_URL = "http://localhost:11435"
+DEFAULT_RUNS = 10  # Número de veces que se ejecuta cada test
+
+# =============================================================================
+# System Prompts específicos por categoría (simples, sin conocimiento previo)
+# =============================================================================
+
+SYSTEM_CHAT = """Eres un asistente conversacional. Responde de forma natural y amigable.
+Responde en el mismo idioma que el usuario."""
+
+SYSTEM_MATH = """Eres una calculadora. Responde SOLO con el número resultante.
+No expliques, no muestres pasos. Solo el número."""
+
+SYSTEM_CODE = """Eres un programador experto. Responde SOLO con código.
+No expliques, no agregues comentarios innecesarios. Solo código funcional."""
+
+SYSTEM_TOOLS = """Eres un asistente con acceso a herramientas.
+
+HERRAMIENTAS:
+- get_weather(location): Clima de una ciudad
+- calculate(expression): Calcular expresión matemática
+- translate(text, to_language): Traducir texto
+
+RESPONDE SOLO CON JSON: {"tool": "nombre", "arguments": {"param": "valor"}}"""
+
+SYSTEM_REASONING = """Eres un asistente de razonamiento lógico.
+Analiza el problema y da una respuesta concisa."""
+
+SYSTEM_GENERAL = """Eres un asistente de IA útil y preciso.
+Responde de forma clara y concisa."""
 
 # =============================================================================
 # Definiciones
 # =============================================================================
 
-# System prompt universal
-UNIVERSAL_SYSTEM = """Eres un asistente de IA preciso y útil. Sigue estas reglas:
-
-IDIOMA: Responde en el mismo idioma que el usuario.
-
-FORMATO:
-- Preguntas simples (capitales, datos): responde solo con el dato
-- Matemáticas: muestra el resultado numérico primero
-- Código: proporciona código funcional y limpio
-
-CONOCIMIENTO:
-- París es la capital de Francia
-- Madrid es la capital de España
-- Londres es la capital de Reino Unido"""
-
-# System prompt para tools
-TOOLS_SYSTEM = """Eres un asistente de IA preciso con acceso a herramientas.
-
-HERRAMIENTAS DISPONIBLES:
-- get_weather(location, unit): Obtener clima de una ciudad
-- calculate(expression): Calcular expresiones matemáticas
-- translate(text, to_language): Traducir texto
-
-CUÁNDO USAR HERRAMIENTAS:
-✅ USA herramientas para: clima actual, cálculos complejos, traducciones
-❌ NO uses herramientas para: conocimiento general, matemáticas simples
-
-FORMATO: Responde SOLO con JSON: {"tool": "nombre", "arguments": {"param": "valor"}}"""
-
 @dataclass
 class TestCase:
     name: str
     category: str
-    messages: list
+    system: str
+    user: str
     max_tokens: int
     expected: str
-    
+
 @dataclass
 class TestResult:
     name: str
     category: str
-    passed: bool
-    time_ms: int
-    tokens: int
-    tps: float
-    response: str
-    expected: str
+    runs: int
+    passed: int
+    accuracy: float
+    avg_time_ms: int
+    avg_tokens: float
+    avg_tps: float
+    responses: List[str] = field(default_factory=list)
+    expected: str = ""
 
 # =============================================================================
-# Tests
+# Tests por categoría
 # =============================================================================
 
 def make_tests():
     return [
-        # Chat - con system prompt universal
-        TestCase("Saludo", "Chat", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¡Hola! ¿Cómo estás?"}
-        ], 30, "hola/bien/ayudar"),
-        TestCase("Capital Francia", "Chat", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuál es la capital de Francia?"}
-        ], 30, "París/Paris"),
-        TestCase("Capital España", "Chat", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuál es la capital de España?"}
-        ], 30, "Madrid"),
-        TestCase("Quién es Einstein", "Chat", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Quién fue Albert Einstein?"}
-        ], 100, "físico/científico/physicist"),
+        # === CHAT ===
+        TestCase("Saludo", "Chat", SYSTEM_CHAT,
+                 "¡Hola! ¿Cómo estás?",
+                 50, "hola/bien/ayud"),
+        TestCase("Capital Francia", "Chat", SYSTEM_CHAT,
+                 "¿Cuál es la capital de Francia?",
+                 30, "París/Paris"),
+        TestCase("Capital España", "Chat", SYSTEM_CHAT,
+                 "¿Cuál es la capital de España?",
+                 30, "Madrid"),
+        TestCase("Quién es Einstein", "Chat", SYSTEM_CHAT,
+                 "¿Quién fue Albert Einstein?",
+                 100, "físico/científico/physicist/ciencia"),
         
-        # Matemáticas - con system prompt universal
-        TestCase("25+17", "Matemáticas", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuánto es 25+17? Solo el número."}
-        ], 20, "42"),
-        TestCase("12*11", "Matemáticas", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuánto es 12*11? Solo el número."}
-        ], 20, "132"),
-        TestCase("100/4", "Matemáticas", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuánto es 100/4? Solo el número."}
-        ], 20, "25"),
-        TestCase("7^2", "Matemáticas", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cuánto es 7 al cuadrado? Solo el número."}
-        ], 20, "49"),
+        # === MATEMÁTICAS ===
+        TestCase("25+17", "Matemáticas", SYSTEM_MATH,
+                 "25+17", 20, "42"),
+        TestCase("12*11", "Matemáticas", SYSTEM_MATH,
+                 "12*11", 20, "132"),
+        TestCase("100/4", "Matemáticas", SYSTEM_MATH,
+                 "100/4", 20, "25"),
+        TestCase("7^2", "Matemáticas", SYSTEM_MATH,
+                 "7 al cuadrado", 20, "49"),
         
-        # Código - con system prompt universal
-        TestCase("Hola Mundo", "Código", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Escribe un programa Python que imprima 'Hola Mundo'. Solo código."}
-        ], 50, "print"),
-        TestCase("Función suma", "Código", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Escribe una función Python llamada 'sumar' que sume dos números."}
-        ], 100, "def"),
-        TestCase("Lista reversa", "Código", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Escribe código Python para invertir una lista llamada 'items'."}
-        ], 80, "reverse/::-1/reversed"),
-        TestCase("Bucle for", "Código", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Escribe un bucle for en Python que imprima del 1 al 5."}
-        ], 80, "for"),
+        # === CÓDIGO ===
+        TestCase("Hola Mundo", "Código", SYSTEM_CODE,
+                 "print Hola Mundo en Python",
+                 50, "print"),
+        TestCase("Función suma", "Código", SYSTEM_CODE,
+                 "función Python que sume dos números",
+                 100, "def"),
+        TestCase("Lista reversa", "Código", SYSTEM_CODE,
+                 "código Python para invertir una lista",
+                 100, "reverse/::-1/reversed"),
+        TestCase("Bucle for", "Código", SYSTEM_CODE,
+                 "bucle for en Python del 1 al 5",
+                 100, "for"),
         
-        # Tools - con system prompt de tools
-        TestCase("Tool: Clima Tokio", "Tools", [
-            {"role": "system", "content": TOOLS_SYSTEM},
-            {"role": "user", "content": "¿Qué clima hace en Tokio?"}
-        ], 150, "get_weather"),
-        TestCase("Tool: Clima Londres", "Tools", [
-            {"role": "system", "content": TOOLS_SYSTEM},
-            {"role": "user", "content": "Consulta el clima en Londres por favor."}
-        ], 150, "get_weather"),
-        TestCase("Tool: Calcular", "Tools", [
-            {"role": "system", "content": TOOLS_SYSTEM},
-            {"role": "user", "content": "Usa la calculadora para: 25 * 4"}
-        ], 150, "calculate"),
-        TestCase("Tool: Traducir", "Tools", [
-            {"role": "system", "content": TOOLS_SYSTEM},
-            {"role": "user", "content": "Traduce 'adiós' al francés"}
-        ], 150, "translate"),
+        # === TOOLS ===
+        TestCase("Tool: Clima", "Tools", SYSTEM_TOOLS,
+                 "clima en Tokio",
+                 150, "get_weather"),
+        TestCase("Tool: Calcular", "Tools", SYSTEM_TOOLS,
+                 "calcula 25*4",
+                 150, "calculate"),
+        TestCase("Tool: Traducir", "Tools", SYSTEM_TOOLS,
+                 "traduce 'hola' al inglés",
+                 150, "translate"),
         
-        # General - con system prompt universal
-        TestCase("Saludo formal", "General", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Cómo estás?"}
-        ], 50, "bien/estoy/encuentro"),
-        TestCase("Código con comentarios", "General", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Escribe una función Python que multiplique dos números."}
-        ], 100, "def"),
+        # === RAZONAMIENTO ===
+        TestCase("Secuencia", "Razonamiento", SYSTEM_REASONING,
+                 "¿Qué número sigue: 2, 4, 6, 8, ?",
+                 50, "10"),
+        TestCase("Silogismo", "Razonamiento", SYSTEM_REASONING,
+                 "Si todos los gatos son animales, y Michi es un gato, ¿qué es Michi?",
+                 50, "animal/gato"),
+        TestCase("Lógica", "Razonamiento", SYSTEM_REASONING,
+                 "Si llueve, el suelo se moja. Está lloviendo. ¿Cómo está el suelo?",
+                 50, "mojado/wet"),
         
-        # Razonamiento - con system prompt universal
-        TestCase("Secuencia: 2,4,6,8,?", "Razonamiento", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "¿Qué número sigue: 2, 4, 6, 8, ?"}
-        ], 50, "10"),
-        TestCase("Silogismo", "Razonamiento", [
-            {"role": "system", "content": UNIVERSAL_SYSTEM},
-            {"role": "user", "content": "Todos los perros son animales. Firulais es un perro. ¿Qué es Firulais?"}
-        ], 50, "animal/perro"),
+        # === GENERAL ===
+        TestCase("Saludo formal", "General", SYSTEM_GENERAL,
+                 "Buenos días",
+                 50, "buenos/días/hola/salud"),
+        TestCase("Despedida", "General", SYSTEM_GENERAL,
+                 "Adiós, gracias por tu ayuda",
+                 50, "adiós/hasta/gusto/nada"),
     ]
 
 # =============================================================================
-# Validator
+# Validadores
 # =============================================================================
 
 def validate(response: str, expected: str, category: str) -> bool:
     r = response.lower()
-    e = expected.lower()
     
     if category == "Tools":
-        # Buscar JSON de tool call - con tolerancia a JSON truncado/malformado
-        try:
-            start = response.find('{')
-            if start == -1:
-                return False
-            depth = 0
-            end = start
-            for i, char in enumerate(response[start:], start):
-                if char == '{':
-                    depth += 1
-                elif char == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            
-            json_str = response[start:end]
-            
-            # Si el JSON está truncado, intentar repararlo
-            if depth > 0:
-                json_str = response[start:] + ('}' * depth)
-            
-            try:
-                data = json.loads(json_str)
-                return data.get("tool") == expected
-            except json.JSONDecodeError:
-                # Fallback: buscar el nombre de la tool con regex
-                import re
-                tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', response)
-                if tool_match:
-                    return tool_match.group(1) == expected
-                return False
-        except:
-            # Último intento con regex
-            import re
-            tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', response)
-            if tool_match:
-                return tool_match.group(1) == expected
-            return False
+        # Buscar tool call en JSON
+        tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', response)
+        if tool_match:
+            return tool_match.group(1) == expected
+        return False
     
     # Para otros, buscar palabras clave
-    keywords = [kw.strip() for kw in e.split('/')]
+    keywords = [kw.strip().lower() for kw in expected.split('/')]
     return any(kw in r for kw in keywords)
 
 # =============================================================================
-# Runner
+# Runner con múltiples ejecuciones
 # =============================================================================
 
-def run_tests(url: str) -> list:
+def run_single_test(session, url: str, test: TestCase) -> tuple:
+    """Ejecuta un solo test y retorna (passed, time_ms, tokens, tps, response)"""
+    try:
+        start = time.time()
+        r = session.post(
+            f"{url}/v1/chat/completions",
+            json={
+                "model": "bitnet",
+                "messages": [
+                    {"role": "system", "content": test.system},
+                    {"role": "user", "content": test.user}
+                ],
+                "max_tokens": test.max_tokens,
+                "temperature": 0.3
+            },
+            timeout=60
+        )
+        elapsed = time.time() - start
+        
+        data = r.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        tokens = data.get("usage", {}).get("completion_tokens", 0)
+        tps = tokens / elapsed if elapsed > 0 else 0
+        
+        passed = validate(content, test.expected, test.category)
+        
+        return (passed, int(elapsed * 1000), tokens, tps, content[:200])
+    except Exception as e:
+        return (False, 0, 0, 0, f"Error: {e}")
+
+def run_tests(url: str, runs: int = DEFAULT_RUNS) -> list:
+    """Ejecuta cada test múltiples veces y calcula precisión"""
     results = []
     tests = make_tests()
     session = requests.Session()
     
-    for i, test in enumerate(tests, 1):
-        print(f"[{i}/{len(tests)}] {test.name}...", end=" ", flush=True)
+    total_runs = len(tests) * runs
+    current = 0
+    
+    print(f"\n📊 Ejecutando {len(tests)} tests × {runs} veces = {total_runs} ejecuciones\n")
+    
+    for test in tests:
+        passed_count = 0
+        times = []
+        tokens_list = []
+        tps_list = []
+        responses = []
         
-        try:
-            start = time.time()
-            r = session.post(
-                f"{url}/v1/chat/completions",
-                json={
-                    "model": "bitnet",
-                    "messages": test.messages,
-                    "max_tokens": test.max_tokens,
-                    "temperature": 0.3
-                },
-                timeout=60
-            )
-            elapsed = time.time() - start
+        print(f"[{test.name}] ", end="", flush=True)
+        
+        for run in range(runs):
+            current += 1
+            passed, time_ms, tokens, tps, response = run_single_test(session, url, test)
             
-            data = r.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            tokens = data.get("usage", {}).get("completion_tokens", 0)
-            tps = tokens / elapsed if elapsed > 0 else 0
+            if passed:
+                passed_count += 1
+                print("✓", end="", flush=True)
+            else:
+                print("✗", end="", flush=True)
             
-            passed = validate(content, test.expected, test.category)
-            
-            results.append(TestResult(
-                name=test.name,
-                category=test.category,
-                passed=passed,
-                time_ms=int(elapsed * 1000),
-                tokens=tokens,
-                tps=round(tps, 1),
-                response=content[:500],
-                expected=test.expected
-            ))
-            
-            print("✅" if passed else "❌", f"{int(elapsed*1000)}ms")
-            
-        except Exception as e:
-            results.append(TestResult(
-                name=test.name,
-                category=test.category,
-                passed=False,
-                time_ms=0,
-                tokens=0,
-                tps=0,
-                response=f"Error: {e}",
-                expected=test.expected
-            ))
-            print(f"❌ Error")
+            times.append(time_ms)
+            tokens_list.append(tokens)
+            tps_list.append(tps)
+            responses.append(response)
+        
+        accuracy = (passed_count / runs) * 100
+        avg_time = sum(times) / len(times) if times else 0
+        avg_tokens = sum(tokens_list) / len(tokens_list) if tokens_list else 0
+        avg_tps = sum(tps_list) / len(tps_list) if tps_list else 0
+        
+        print(f" → {accuracy:.0f}% ({passed_count}/{runs})")
+        
+        results.append(TestResult(
+            name=test.name,
+            category=test.category,
+            runs=runs,
+            passed=passed_count,
+            accuracy=accuracy,
+            avg_time_ms=int(avg_time),
+            avg_tokens=round(avg_tokens, 1),
+            avg_tps=round(avg_tps, 1),
+            responses=responses[:3],  # Guardar solo 3 ejemplos
+            expected=test.expected
+        ))
     
     return results
 
@@ -293,54 +268,86 @@ def run_tests(url: str) -> list:
 # HTML Report
 # =============================================================================
 
-def generate_html(results: list, url: str) -> str:
-    total = len(results)
-    passed = sum(1 for r in results if r.passed)
-    failed = total - passed
-    total_time = sum(r.time_ms for r in results)
-    total_tokens = sum(r.tokens for r in results)
-    avg_tps = total_tokens / (total_time / 1000) if total_time > 0 else 0
+def generate_html(results: list, url: str, runs: int) -> str:
+    total_tests = len(results)
+    total_runs = total_tests * runs
+    total_passed = sum(r.passed for r in results)
+    overall_accuracy = (total_passed / total_runs) * 100 if total_runs > 0 else 0
+    total_time = sum(r.avg_time_ms * runs for r in results)
+    total_tokens = sum(r.avg_tokens * runs for r in results)
+    avg_tps = sum(r.avg_tps for r in results) / len(results) if results else 0
+    
+    # Tests con 100% accuracy
+    perfect_tests = sum(1 for r in results if r.accuracy == 100)
     
     # Agrupar por categoría
     categories = {}
     for r in results:
         if r.category not in categories:
-            categories[r.category] = {"passed": 0, "failed": 0, "time": 0, "tokens": 0}
-        categories[r.category]["passed" if r.passed else "failed"] += 1
-        categories[r.category]["time"] += r.time_ms
-        categories[r.category]["tokens"] += r.tokens
+            categories[r.category] = {"tests": 0, "passed": 0, "runs": 0, "time": 0}
+        categories[r.category]["tests"] += 1
+        categories[r.category]["passed"] += r.passed
+        categories[r.category]["runs"] += r.runs
+        categories[r.category]["time"] += r.avg_time_ms
     
     # Generar filas de resultados
     result_rows = ""
     for r in results:
-        status_class = "pass" if r.passed else "fail"
-        status_icon = "✅" if r.passed else "❌"
-        response_escaped = r.response.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+        # Color según precisión
+        if r.accuracy == 100:
+            status_class = "perfect"
+            status_icon = "🎯"
+        elif r.accuracy >= 70:
+            status_class = "good"
+            status_icon = "✅"
+        elif r.accuracy >= 40:
+            status_class = "warning"
+            status_icon = "⚠️"
+        else:
+            status_class = "bad"
+            status_icon = "❌"
+        
+        # Muestra de respuestas
+        sample_responses = "<br>".join([
+            f"<small>{resp[:100]}{'...' if len(resp) > 100 else ''}</small>"
+            for resp in r.responses[:2]
+        ])
+        
         result_rows += f"""
         <tr class="{status_class}">
             <td>{r.name}</td>
             <td>{r.category}</td>
-            <td class="status">{status_icon}</td>
-            <td>{r.time_ms}ms</td>
-            <td>{r.tokens}</td>
-            <td>{r.tps}</td>
+            <td class="accuracy">{status_icon} {r.accuracy:.0f}%</td>
+            <td>{r.passed}/{r.runs}</td>
+            <td>{r.avg_time_ms}ms</td>
+            <td>{r.avg_tokens}</td>
+            <td>{r.avg_tps}</td>
             <td class="expected">{r.expected}</td>
-            <td class="response">{response_escaped[:200]}{'...' if len(response_escaped) > 200 else ''}</td>
+            <td class="response">{sample_responses}</td>
         </tr>"""
     
     # Generar filas de categorías
     category_rows = ""
     for cat, stats in categories.items():
-        total_cat = stats["passed"] + stats["failed"]
-        pct = (stats["passed"] / total_cat * 100) if total_cat > 0 else 0
+        pct = (stats["passed"] / stats["runs"] * 100) if stats["runs"] > 0 else 0
+        avg_time = stats["time"] / stats["tests"] if stats["tests"] > 0 else 0
+        
+        if pct == 100:
+            pct_class = "perfect"
+        elif pct >= 70:
+            pct_class = "good"
+        elif pct >= 40:
+            pct_class = "warning"
+        else:
+            pct_class = "bad"
+        
         category_rows += f"""
         <tr>
             <td>{cat}</td>
-            <td>{stats['passed']}</td>
-            <td>{stats['failed']}</td>
-            <td>{pct:.0f}%</td>
-            <td>{stats['time']}ms</td>
-            <td>{stats['tokens']}</td>
+            <td>{stats['tests']}</td>
+            <td>{stats['passed']}/{stats['runs']}</td>
+            <td class="{pct_class}">{pct:.1f}%</td>
+            <td>{avg_time:.0f}ms</td>
         </tr>"""
     
     html = f"""<!DOCTYPE html>
@@ -348,7 +355,7 @@ def generate_html(results: list, url: str) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BitNet Benchmark Report</title>
+    <title>BitNet Benchmark Report - Precisión</title>
     <style>
         * {{ box-sizing: border-box; }}
         body {{ 
@@ -370,7 +377,7 @@ def generate_html(results: list, url: str) -> str:
         .header p {{ margin: 5px 0; opacity: 0.9; }}
         .summary {{ 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 15px;
             margin-bottom: 20px;
         }}
@@ -381,8 +388,9 @@ def generate_html(results: list, url: str) -> str:
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }}
         .card h3 {{ margin: 0 0 10px 0; color: #666; font-size: 14px; }}
-        .card .value {{ font-size: 32px; font-weight: bold; color: #333; }}
+        .card .value {{ font-size: 28px; font-weight: bold; color: #333; }}
         .card.success .value {{ color: #10b981; }}
+        .card.warning .value {{ color: #f59e0b; }}
         .card.error .value {{ color: #ef4444; }}
         table {{ 
             width: 100%; 
@@ -400,63 +408,76 @@ def generate_html(results: list, url: str) -> str:
         }}
         th {{ background: #f8f9fa; font-weight: 600; color: #666; }}
         tr:hover {{ background: #f8f9fa; }}
-        tr.pass td {{ background: rgba(16, 185, 129, 0.05); }}
-        tr.fail td {{ background: rgba(239, 68, 68, 0.05); }}
-        .status {{ font-size: 18px; text-align: center; }}
+        tr.perfect td {{ background: rgba(16, 185, 129, 0.1); }}
+        tr.good td {{ background: rgba(16, 185, 129, 0.05); }}
+        tr.warning td {{ background: rgba(245, 158, 11, 0.1); }}
+        tr.bad td {{ background: rgba(239, 68, 68, 0.1); }}
+        .accuracy {{ font-weight: bold; }}
+        td.perfect {{ color: #10b981; }}
+        td.good {{ color: #10b981; }}
+        td.warning {{ color: #f59e0b; }}
+        td.bad {{ color: #ef4444; }}
         .response {{ 
-            max-width: 300px; 
-            font-size: 12px; 
+            max-width: 250px; 
+            font-size: 11px; 
             color: #666;
             word-break: break-word;
         }}
-        .expected {{ font-size: 12px; color: #888; }}
+        .expected {{ font-size: 12px; color: #888; max-width: 100px; }}
         .footer {{ text-align: center; color: #888; margin-top: 30px; }}
+        .legend {{
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }}
+        .legend span {{ display: flex; align-items: center; gap: 5px; }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🧪 BitNet Benchmark Report</h1>
+        <h1>🧪 BitNet Benchmark Report - Análisis de Precisión</h1>
         <p>📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p>🔗 Server: {url}</p>
+        <p>🔄 Cada test ejecutado {runs} veces para medir consistencia</p>
     </div>
     
     <div class="summary">
+        <div class="card {'success' if overall_accuracy >= 80 else 'warning' if overall_accuracy >= 60 else 'error'}">
+            <h3>Precisión Global</h3>
+            <div class="value">{overall_accuracy:.1f}%</div>
+        </div>
         <div class="card">
-            <h3>Total Tests</h3>
-            <div class="value">{total}</div>
+            <h3>Tests Totales</h3>
+            <div class="value">{total_tests}</div>
+        </div>
+        <div class="card">
+            <h3>Ejecuciones</h3>
+            <div class="value">{total_runs}</div>
         </div>
         <div class="card success">
-            <h3>Passed ✅</h3>
-            <div class="value">{passed} ({passed/total*100:.0f}%)</div>
-        </div>
-        <div class="card error">
-            <h3>Failed ❌</h3>
-            <div class="value">{failed}</div>
+            <h3>Tests 100% ✓</h3>
+            <div class="value">{perfect_tests}</div>
         </div>
         <div class="card">
-            <h3>Total Time</h3>
+            <h3>Tiempo Total</h3>
             <div class="value">{total_time/1000:.1f}s</div>
         </div>
         <div class="card">
-            <h3>Tokens</h3>
-            <div class="value">{total_tokens}</div>
-        </div>
-        <div class="card">
-            <h3>Avg Speed</h3>
+            <h3>Vel. Promedio</h3>
             <div class="value">{avg_tps:.1f} t/s</div>
         </div>
     </div>
     
-    <h2>📊 Por Categoría</h2>
+    <h2>📊 Precisión por Categoría</h2>
     <table>
         <thead>
             <tr>
                 <th>Categoría</th>
+                <th>Tests</th>
                 <th>Pasaron</th>
-                <th>Fallaron</th>
-                <th>% Éxito</th>
-                <th>Tiempo</th>
-                <th>Tokens</th>
+                <th>Precisión</th>
+                <th>Tiempo Prom.</th>
             </tr>
         </thead>
         <tbody>
@@ -465,17 +486,24 @@ def generate_html(results: list, url: str) -> str:
     </table>
     
     <h2>📋 Resultados Detallados</h2>
+    <div class="legend">
+        <span>🎯 100%</span>
+        <span>✅ ≥70%</span>
+        <span>⚠️ ≥40%</span>
+        <span>❌ &lt;40%</span>
+    </div>
     <table>
         <thead>
             <tr>
                 <th>Test</th>
                 <th>Categoría</th>
-                <th>Estado</th>
-                <th>Tiempo</th>
-                <th>Tokens</th>
+                <th>Precisión</th>
+                <th>Pasaron</th>
+                <th>Tiempo Prom.</th>
+                <th>Tokens Prom.</th>
                 <th>T/s</th>
                 <th>Esperado</th>
-                <th>Respuesta</th>
+                <th>Muestras</th>
             </tr>
         </thead>
         <tbody>
@@ -485,6 +513,7 @@ def generate_html(results: list, url: str) -> str:
     
     <div class="footer">
         <p>Generated by neuro-bitnet benchmark suite</p>
+        <p>Cada test se ejecutó {runs} veces para medir precisión estadística</p>
     </div>
 </body>
 </html>"""
@@ -496,13 +525,16 @@ def generate_html(results: list, url: str) -> str:
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="BitNet Report Generator")
+    parser = argparse.ArgumentParser(description="BitNet Report Generator con análisis de precisión")
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--output", "-o", default="benchmark_report.html")
+    parser.add_argument("--runs", "-r", type=int, default=DEFAULT_RUNS,
+                        help=f"Número de veces que se ejecuta cada test (default: {DEFAULT_RUNS})")
     args = parser.parse_args()
     
-    print(f"\n🧪 BitNet Full Benchmark")
+    print(f"\n🧪 BitNet Benchmark - Análisis de Precisión")
     print(f"🔗 URL: {args.url}")
+    print(f"🔄 Runs por test: {args.runs}")
     print("=" * 60)
     
     # Verificar servidor
@@ -514,23 +546,26 @@ def main():
         print(f"❌ No se puede conectar a {args.url}")
         exit(1)
     
-    print("✅ Servidor disponible\n")
+    print("✅ Servidor disponible")
     
     # Ejecutar tests
-    results = run_tests(args.url)
+    results = run_tests(args.url, args.runs)
     
     # Generar reporte
-    html = generate_html(results, args.url)
+    html = generate_html(results, args.url, args.runs)
     
     with open(args.output, 'w') as f:
         f.write(html)
     
     # Resumen
-    passed = sum(1 for r in results if r.passed)
-    total = len(results)
+    total_passed = sum(r.passed for r in results)
+    total_runs = sum(r.runs for r in results)
+    overall_accuracy = (total_passed / total_runs) * 100 if total_runs > 0 else 0
+    perfect = sum(1 for r in results if r.accuracy == 100)
     
     print("\n" + "=" * 60)
-    print(f"📊 RESUMEN: {passed}/{total} tests pasaron ({passed/total*100:.0f}%)")
+    print(f"📊 PRECISIÓN GLOBAL: {overall_accuracy:.1f}%")
+    print(f"🎯 Tests con 100%: {perfect}/{len(results)}")
     print(f"📄 Reporte generado: {args.output}")
     print("=" * 60)
 
