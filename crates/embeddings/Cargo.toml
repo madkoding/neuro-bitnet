@@ -1,0 +1,24 @@
+[package]
+name = "neuro-embeddings"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Embedding generation for neuro-bitnet RAG system using fastembed"
+keywords = ["embeddings", "rag", "ml", "fastembed"]
+categories = ["science"]
+
+[dependencies]
+neuro-core = { workspace = true }
+fastembed = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio-test = { workspace = true }
+
+[features]
+default = []

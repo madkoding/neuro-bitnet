@@ -1,0 +1,32 @@
+[package]
+name = "neuro-inference"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Local LLM inference using bitnet.cpp for BitNet 1.58-bit models"
+
+[dependencies]
+# Async runtime for subprocess and downloads  
+tokio = { version = "1.0", features = ["rt-multi-thread", "fs", "process", "io-util"] }
+
+# HTTP client for model downloads
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }
+futures-util = { version = "0.3", optional = true }
+
+# Progress bar and checksums
+indicatif = { version = "0.17", optional = true }
+sha2 = { version = "0.10", optional = true }
+
+# Common dependencies
+thiserror = "1.0"
+tracing = "0.1"
+encoding_rs = "0.8"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+dirs = "5.0"
+
+[features]
+default = ["download"]
+# Model download support with progress bars
+download = ["dep:reqwest", "dep:futures-util", "dep:indicatif", "dep:sha2"]

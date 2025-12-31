@@ -1,0 +1,28 @@
+[package]
+name = "neuro-search"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Web search capabilities for neuro-bitnet RAG system"
+keywords = ["search", "rag", "web", "wikipedia"]
+categories = ["web-programming"]
+
+[dependencies]
+neuro-core = { workspace = true }
+reqwest = { workspace = true }
+scraper = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+url = "2.5"
+urlencoding = "2.1"
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio-test = { workspace = true }
+wiremock = "0.6"

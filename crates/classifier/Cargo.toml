@@ -1,0 +1,20 @@
+[package]
+name = "neuro-classifier"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Query classifier for neuro-bitnet RAG system"
+keywords = ["classifier", "rag", "nlp", "regex"]
+categories = ["text-processing"]
+
+[dependencies]
+neuro-core = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }

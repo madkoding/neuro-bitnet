@@ -1,0 +1,26 @@
+[package]
+name = "neuro-indexer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Code indexing for neuro-bitnet RAG system using tree-sitter"
+keywords = ["indexer", "rag", "tree-sitter", "code-analysis"]
+categories = ["development-tools"]
+
+[dependencies]
+neuro-core = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-python = { workspace = true }
+tree-sitter-javascript = { workspace = true }
+tree-sitter-typescript = { workspace = true }
+tree-sitter-rust = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+walkdir = "2.4"
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }

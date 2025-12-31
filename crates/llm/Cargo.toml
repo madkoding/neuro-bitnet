@@ -1,0 +1,33 @@
+[package]
+name = "neuro-llm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LLM client for neuro-bitnet (BitNet/llama.cpp OpenAI-compatible API)"
+keywords = ["llm", "bitnet", "ai", "chat", "generation"]
+categories = ["web-programming"]
+
+[dependencies]
+# Async
+tokio = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async streams for streaming responses
+futures = "0.3"
+tokio-stream = "0.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

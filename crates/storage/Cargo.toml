@@ -1,0 +1,26 @@
+[package]
+name = "neuro-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Storage backends for neuro-bitnet RAG system with vector similarity search"
+keywords = ["storage", "rag", "vector", "similarity"]
+categories = ["database"]
+
+[dependencies]
+neuro-core = { workspace = true }
+neuro-embeddings = { workspace = true }
+ndarray = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+async-trait = "0.1"
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+tokio-test = { workspace = true }

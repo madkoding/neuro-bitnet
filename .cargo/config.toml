@@ -1,0 +1,26 @@
+# Build configuration for static binaries
+# Use: cargo build --release --target x86_64-unknown-linux-musl
+
+[target.x86_64-unknown-linux-musl]
+linker = "musl-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-musl-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# Default target for Linux builds (can be overridden)
+# [build]
+# target = "x86_64-unknown-linux-musl"
+
+[alias]
+# Build static binary for current platform
+static = "build --release --target x86_64-unknown-linux-musl"
+# Run tests with all features
+test-all = "test --all-features"
+# Check all targets
+check-all = "check --all-targets --all-features"
+
+[env]
+# Ensure static linking for OpenSSL if used
+OPENSSL_STATIC = "1"
