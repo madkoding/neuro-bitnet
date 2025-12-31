@@ -1,34 +1,176 @@
-theme: jekyll-theme-cayman
-title: neuro-bitnet
-description: High-performance RAG server with BitNet inference
-baseurl: "/neuro-bitnet"
-url: "https://madkoding.github.io"
+# The Site Configuration
 
-# Language support
+# Import the theme
+theme: jekyll-theme-chirpy
+
+# The language of the webpage
+lang: en
+
+# Change to your timezone
+timezone: America/Santiago
+
+# jekyll-seo-tag settings
+title: neuro-bitnet
+tagline: High-performance RAG server with BitNet inference
+description: >-
+  A high-performance RAG (Retrieval Augmented Generation) server written in Rust 
+  with BitNet 1.58-bit local inference support. Features intelligent query classification, 
+  native embeddings, and CPU-only inference using Microsoft's BitNet models.
+
+# Fill in the protocol & hostname for your site
+url: "https://madkoding.github.io"
+baseurl: "/neuro-bitnet"
+
+github:
+  username: madkoding
+
+social:
+  name: madkoding
+  email: 
+  links:
+    - https://github.com/madkoding
+
+# Site Verification Settings
+webmaster_verifications:
+  google:
+  bing:
+  alexa:
+  yandex:
+  baidu:
+  facebook:
+
+# Web Analytics Settings
+analytics:
+  google:
+    id:
+  goatcounter:
+    id:
+  umami:
+    id:
+    domain:
+  matomo:
+    id:
+    domain:
+  cloudflare:
+    id:
+  fathom:
+    id:
+
+# Page views settings
+pageviews:
+  provider:
+
+# Prefer color scheme setting
+theme_mode: # [light | dark]
+
+# The CDN endpoint for media resources
+cdn:
+
+# The avatar on sidebar, support local or CORS resources
+avatar: https://avatars.githubusercontent.com/u/madkoding
+
+# The URL of the site-wide social preview image
+social_preview_image:
+
+# boolean type, the global switch for TOC in posts
+toc: true
+
+comments:
+  provider: # [disqus | utterances | giscus]
+  disqus:
+    shortname:
+  utterances:
+    repo:
+    issue_term:
+  giscus:
+    repo:
+    repo_id:
+    category:
+    category_id:
+    mapping:
+    strict:
+    input_position:
+    lang:
+    reactions_enabled:
+
+# Self-hosted static assets
+assets:
+  self_host:
+    enabled:
+    env:
+
+pwa:
+  enabled: true
+  cache:
+    enabled: true
+    deny_paths:
+
+paginate: 10
+
+# The base URL of your site
+kramdown:
+  footnote_backlink: "&#8617;&#xfe0e;"
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: highlight
+    span:
+      line_numbers: false
+    block:
+      line_numbers: true
+      start_line: 1
+
+collections:
+  tabs:
+    output: true
+    sort_by: order
+
 defaults:
   - scope:
       path: ""
+      type: posts
     values:
-      lang: "en"
+      layout: post
+      comments: true
+      toc: true
+      permalink: /posts/:title/
   - scope:
-      path: "es"
+      path: _drafts
     values:
-      lang: "es"
+      comments: false
+  - scope:
+      path: ""
+      type: tabs
+    values:
+      layout: page
+      permalink: /:title/
 
-# Navigation
-header_pages:
-  - index.md
-  - benchmarks.md
-  - local-inference.md
-  - api.md
+sass:
+  style: compressed
 
-# Plugins
-plugins:
-  - jekyll-seo-tag
-  - jekyll-sitemap
+compress_html:
+  clippings: all
+  comments: all
+  endings: all
+  profile: false
+  blanklines: false
+  ignore:
+    envs: [development]
 
-# Exclude from build
 exclude:
-  - Gemfile
-  - Gemfile.lock
-  - vendor
+  - "*.gem"
+  - "*.gemspec"
+  - docs
+  - tools
+  - README.md
+  - LICENSE
+  - "*.config.js"
+  - package*.json
+
+jekyll-archives:
+  enabled: [categories, tags]
+  layouts:
+    category: category
+    tag: tag
+  permalinks:
+    tag: /tags/:name/
+    category: /categories/:name/

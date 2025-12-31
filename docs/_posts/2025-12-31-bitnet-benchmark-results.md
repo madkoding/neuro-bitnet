@@ -1,12 +1,14 @@
 ---
-layout: default
-title: Benchmarks
-nav_order: 2
+title: BitNet Benchmark Results - 100% Pass Rate
+date: 2025-12-31 01:00:00 -0300
+categories: [Benchmarks, Performance]
+tags: [bitnet, benchmark, inference, rust]
+pin: true
+math: false
+mermaid: false
 ---
 
 # BitNet Benchmark Report
-
-🌐 **[Español](es/benchmarks)** | English
 
 ## Executive Summary
 
@@ -92,9 +94,6 @@ Logic's gentle flow.
 **Q: What is a binary search algorithm?**
 > A binary search algorithm is a method for efficiently finding an item from a sorted list of items by repeatedly dividing the portion of the list that could contain the item in half. It compares the middle element to the target value and eliminates one-half of the remaining elements based on the comparison's outcome. The algorithm has a time complexity of O(log n), making it faster than linear search for large datasets.
 
-**Q: If all cats are animals, and some animals are pets, can we conclude all cats are pets?**
-> No, not necessarily. All cats being animals does not imply that they are pets. Cats can be either pets or wild animals. The statement only tells us that all cats fall under the category of animals, but it does not provide information about their status as pets.
-
 ## Response Time Analysis
 
 | Category | Avg Time | Notes |
@@ -117,24 +116,6 @@ Logic's gentle flow.
 | **Quality** | Higher | Lower |
 | **Backend** | Subprocess | Native bindings |
 
-### Key Insights
-
-1. **BitNet produces higher quality responses** despite using subprocess backend
-2. **Larger model = better accuracy** (2B vs 0.5B parameters)
-3. **1.58-bit quantization** is extremely efficient for model size
-4. **Subprocess overhead** adds ~500ms but enables pure BitNet execution
-
-## System Configuration
-
-| Component | Value |
-|-----------|-------|
-| **Model** | BitNet b1.58 2B-4T |
-| **Format** | GGUF (i2_s quantization) |
-| **Backend** | Subprocess (llama-cli from bitnet.cpp) |
-| **CPU Optimization** | TLS (Thread Local Storage) |
-| **Max Tokens** | 100 |
-| **Benchmark Date** | 2025-12-31 |
-
 ## Conclusions
 
 The migration to **BitNet b1.58 2B-4T** has resulted in:
@@ -151,7 +132,3 @@ The migration to **BitNet b1.58 2B-4T** has resulted in:
 - ✅ **Consider BitNet 3B/8B** for even better quality if latency permits
 - ⚠️ **Optimize for short queries** - Simple factual queries are very fast (~800ms)
 - 🔧 **Future: Native bindings** - When bitnet-cpp crate is fixed, migrate for lower latency
-
----
-
-*Report generated: 2025-12-31*

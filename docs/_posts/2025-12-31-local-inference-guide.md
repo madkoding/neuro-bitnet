@@ -1,12 +1,14 @@
 ---
-layout: default
-title: Local Inference
-nav_order: 3
+title: Local Inference with BitNet
+date: 2025-12-31 00:30:00 -0300
+categories: [Documentation, Setup]
+tags: [bitnet, inference, setup, installation]
+pin: true
+math: false
+mermaid: true
 ---
 
 # Local Inference with BitNet
-
-🌐 **[Español](es/local-inference)** | English
 
 neuro-bitnet provides local **CPU-only** inference using Microsoft's BitNet 1.58-bit models. These models are extremely efficient thanks to their ternary quantization.
 
@@ -116,10 +118,16 @@ neuro index ./docs --recursive
 neuro ask "Summarize the documentation" --storage ./data
 ```
 
-### With Web Search
+## Architecture
 
-```bash
-neuro ask "What are the latest developments in AI?" --web
+```mermaid
+flowchart TB
+    A[neuro-cli] --> B[SubprocessBackend]
+    B --> C[llama-cli]
+    C --> D[BitNet GGUF Model]
+    
+    A --> E[RAG Storage]
+    A --> F[Web Search]
 ```
 
 ## Configuration
@@ -150,33 +158,6 @@ Options:
   --verbose             Enable verbose output
 ```
 
-## Architecture
-
-```
-┌─────────────────────────────────┐
-│         neuro-cli               │
-│   (Rust CLI application)        │
-└────────────┬────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────┐
-│      SubprocessBackend          │
-│   (tokio::process::Command)     │
-└────────────┬────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────┐
-│        llama-cli                │
-│   (from bitnet.cpp)             │
-└────────────┬────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────┐
-│      BitNet GGUF Model          │
-│   (1.58-bit quantization)       │
-└─────────────────────────────────┘
-```
-
 ## Troubleshooting
 
 ### Binary not found
@@ -204,7 +185,3 @@ neuro model download 2b --force
 - Ensure you compiled with TLS optimization: `-DGGML_BITNET_X86_TLS=ON`
 - Use fewer threads if CPU is overloaded
 - Consider using a smaller model (2b instead of 8b)
-
----
-
-[← Back to Home](.) · [Benchmarks →](benchmarks)

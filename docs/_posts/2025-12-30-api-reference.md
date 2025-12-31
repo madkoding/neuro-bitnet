@@ -1,12 +1,14 @@
 ---
-layout: default
 title: API Reference
-nav_order: 4
+date: 2025-12-31 00:00:00 -0300
+categories: [Documentation, API]
+tags: [api, http, rest, server]
+pin: false
+math: false
+mermaid: false
 ---
 
 # API Reference
-
-🌐 **[Español](es/api)** | English
 
 neuro-bitnet provides a RESTful HTTP API for document storage, search, and intelligent query processing.
 
@@ -245,15 +247,3 @@ Common error codes:
 - `INVALID_REQUEST` - Malformed request
 - `INTERNAL_ERROR` - Server error
 - `EMBEDDING_ERROR` - Embedding generation failed
-
-## Rate Limiting
-
-The server does not implement rate limiting by default. Use a reverse proxy (nginx, traefik) for production deployments.
-
-## CORS
-
-CORS is enabled by default allowing all origins. Configure appropriately for production.
-
----
-
-[← Back to Home](.) · [Local Inference →](local-inference)
