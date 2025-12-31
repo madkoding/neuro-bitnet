@@ -1,135 +1,94 @@
 ---
-layout: page
-icon: fas fa-home
-title: neuro-bitnet
-mermaid: true
+layout: default
+title: Home
+nav_order: 1
 ---
 
-<div style="text-align: center; margin-bottom: 2rem;">
-  <h1>🧠 neuro-bitnet</h1>
-  <p style="font-size: 1.2rem; color: #666;">
-    Servidor RAG inteligente con clasificación automática de consultas
-  </p>
-</div>
+# neuro-bitnet
 
-## ¿Qué es neuro-bitnet?
+[![CI](https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml/badge.svg)](https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/neuro-cli.svg)](LICENSE-MIT)
 
-**neuro-bitnet** es un sistema de Retrieval-Augmented Generation (RAG) diseñado para mejorar las respuestas de modelos de lenguaje cuantizados como BitNet y Falcon. 
+🌐 **[Español](es/)** | English
 
-La innovación principal es su **clasificador inteligente de consultas** que determina automáticamente cuándo activar RAG y cuándo dejar que el LLM responda directamente, optimizando tanto la precisión como el rendimiento.
+A high-performance **RAG (Retrieval Augmented Generation)** server written in Rust with **BitNet 1.58-bit** local inference support.
 
-## ✨ Características Principales
+## ✨ Features
 
-| Característica | Descripción |
-|----------------|-------------|
-| 🧠 **Clasificación Inteligente** | Detecta el tipo de consulta (matemáticas, código, factual, etc.) |
-| 🔍 **RAG Selectivo** | Activa RAG solo cuando mejora la precisión (+33% en consultas factuales) |
-| 📊 **Embeddings Eficientes** | Soporte para MiniLM y MPNet con carga lazy |
-| 🐳 **Docker Ready** | Imágenes optimizadas para GPU NVIDIA |
-| 🧪 **Bien Testeado** | 172 tests unitarios e integración |
-| 🔌 **API REST** | Fácil integración con cualquier aplicación |
+- 🚀 **High Performance** - Native Rust with SIMD-optimized vector operations
+- 🧠 **BitNet Inference** - Local CPU-only inference with Microsoft's 1.58-bit models
+- 📊 **Native Embeddings** - Built-in embedding models via fastembed
+- 🔍 **Semantic Search** - Fast cosine similarity search
+- 🌐 **Web Search** - Wikipedia integration for knowledge augmentation
+- 📦 **Single Binary** - Static compilation, no runtime dependencies
 
-## 🚀 Inicio Rápido
+## 🚀 Quick Start
 
-### Con Docker (recomendado)
+### Installation
 
 ```bash
-git clone https://github.com/madkoding/neuro-bitnet.git
+# From releases
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-linux-x86_64 -o neuro
+chmod +x neuro
+sudo mv neuro /usr/local/bin/
+
+# From source
+cargo install neuro-cli
 ```
+
+### Setup BitNet (for local inference)
 
 ```bash
-cd neuro-bitnet/docker && docker compose up -d
+# Compile bitnet.cpp
+./scripts/setup_bitnet.sh
+
+# Download a BitNet model
+neuro model download 2b
+
+# Ask questions locally
+neuro ask "What is the capital of France?"
 ```
 
-### Con Python
+## 📊 BitNet Benchmark Results
 
-```bash
-git clone https://github.com/madkoding/neuro-bitnet.git
+| Metric | BitNet b1.58 2B-4T |
+|--------|-------------------|
+| **Pass Rate** | 100% |
+| **Model Size** | 1.1 GB |
+| **Avg Response** | 2.8s |
+| **Backend** | CPU-only |
+
+[See full benchmark report →](benchmarks)
+
+## 📚 Documentation
+
+- [Local Inference Guide](local-inference) - Setup BitNet for local inference
+- [Benchmarks](benchmarks) - Performance comparison and test results
+- [API Reference](api) - HTTP API documentation
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐
+│   neuro-cli     │  CLI Interface
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+┌───────┐ ┌───────┐
+│  RAG  │ │BitNet │  Inference
+└───┬───┘ └───┬───┘
+    │         │
+    ▼         ▼
+┌───────┐ ┌───────┐
+│Storage│ │ GGUF  │  Models
+└───────┘ └───────┘
 ```
 
-```bash
-cd neuro-bitnet && pip install -r requirements.txt
-```
+## 📜 License
 
-```bash
-python -m src.server.rag_server
-```
+Licensed under MIT or Apache 2.0 at your option.
 
-### Hacer una consulta
+---
 
-```bash
-curl -X POST http://localhost:8080/query -H "Content-Type: application/json" -d '{"query": "¿Cuál es la capital de Francia?"}'
-```
-
-## 📈 Resultados de Benchmark
-
-El clasificador logra un **93% de precisión global** con mejoras significativas en consultas factuales:
-
-| Categoría | Sin RAG | Con RAG | Mejora |
-|-----------|---------|---------|--------|
-| Matemáticas | 100% | 100% | = |
-| Código | 100% | 100% | = |
-| Razonamiento | 100% | 100% | = |
-| **Factual** | **66.7%** | **100%** | **+33%** |
-
-## 🏗️ Arquitectura
-
-El sistema sigue principios **SOLID** con una arquitectura modular:
-
-```mermaid
-flowchart TB
-    subgraph Cliente
-        HTTP[HTTP Client]
-        CLI[CLI Tools]
-    end
-    
-    subgraph RAG["RAG Server"]
-        Classifier[Classifier]
-        Embeddings[Embeddings]
-        WebSearch[WebSearch]
-        Storage[(Storage)]
-    end
-    
-    subgraph LLM["LLM Backend"]
-        BitNet[BitNet / Falcon]
-    end
-    
-    HTTP --> RAG
-    CLI --> RAG
-    RAG --> LLM
-```
-
-## 📚 Documentación
-
-- [**Guía de Inicio**](getting-started) - Instalación y configuración paso a paso
-- [**Arquitectura**](architecture) - Diseño técnico del sistema
-- [**API Reference**](api) - Documentación de endpoints
-- [**Benchmarks**](benchmarks) - Análisis detallado de rendimiento
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Por favor, abre un issue primero para discutir los cambios propuestos.
-
-**Clonar y configurar entorno de desarrollo:**
-
-```bash
-git clone https://github.com/madkoding/neuro-bitnet.git
-```
-
-```bash
-cd neuro-bitnet && python -m venv .venv && source .venv/bin/activate
-```
-
-```bash
-pip install -e ".[dev]"
-```
-
-**Ejecutar tests:**
-
-```bash
-pytest
-```
-
-## 📄 Licencia
-
-MIT License - ver [LICENSE](https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE) para detalles.
+[GitHub](https://github.com/madkoding/neuro-bitnet) · [Releases](https://github.com/madkoding/neuro-bitnet/releases) · [Issues](https://github.com/madkoding/neuro-bitnet/issues)

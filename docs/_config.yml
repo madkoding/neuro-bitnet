@@ -1,90 +1,34 @@
-# =============================================================================
-# Jekyll Configuration - Chirpy Theme
-# Sitio de documentación para neuro-bitnet
-# =============================================================================
-
-# Site Settings
+theme: jekyll-theme-cayman
 title: neuro-bitnet
-tagline: RAG Server with Intelligent Query Classification
-description: >-
-  Sistema RAG inteligente con clasificación automática de consultas
-  para modelos LLM como BitNet y Falcon. Optimizado para eficiencia
-  y precisión con arquitectura SOLID.
-
-url: "https://madkoding.github.io"
+description: High-performance RAG server with BitNet inference
 baseurl: "/neuro-bitnet"
+url: "https://madkoding.github.io"
 
-timezone: America/Santiago
-
-# Theme
-theme: jekyll-theme-chirpy
-
-# Author
-social:
-  name: madkoding
-  links:
-    - https://github.com/madkoding
-
-# Analytics (opcional)
-analytics:
-  google:
-    id: # Google Analytics ID
-
-# Appearance
-theme_mode: # [light | dark]
-
-# Avatar (opcional - imagen circular en sidebar)
-avatar: # /assets/img/avatar.png
-
-# Table of Contents
-toc: true
-
-# Comments (opcional)
-comments:
-  active: # [disqus | utterances | giscus]
-
-# PWA Feature
-pwa:
-  enabled: true
-
-# Build Settings
-markdown: kramdown
-highlighter: rouge
-
-kramdown:
-  syntax_highlighter: rouge
-  syntax_highlighter_opts:
-    css_class: highlight
-
-# Collections
-collections:
-  tabs:
-    output: true
-    sort_by: order
-
+# Language support
 defaults:
   - scope:
       path: ""
-      type: posts
     values:
-      layout: post
-      comments: false
-      toc: true
-      permalink: /posts/:title/
+      lang: "en"
   - scope:
-      path: _tabs
-      type: tabs
+      path: "es"
     values:
-      layout: page
-      permalink: /:title/
+      lang: "es"
 
-# Exclude from processing
+# Navigation
+header_pages:
+  - index.md
+  - benchmarks.md
+  - local-inference.md
+  - api.md
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+# Exclude from build
 exclude:
-  - "*.gem"
-  - "*.gemspec"
-  - docs
-  - tools
-  - README.md
-  - LICENSE
-  - "*.config.js"
-  - package*.json
+  - Gemfile
+  - Gemfile.lock
+  - vendor

@@ -1,124 +1,294 @@
 # neuro-bitnet
 
-[![Docker Hub](https://img.shields.io/docker/v/madkoding/neuro-bitnet?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
-[![Docker Pulls](https://img.shields.io/docker/pulls/madkoding/neuro-bitnet?logo=docker)](https://hub.docker.com/r/madkoding/neuro-bitnet)
-[![Tests](https://img.shields.io/github/actions/workflow/status/madkoding/neuro-bitnet/tests.yml?label=Tests&logo=github)](https://github.com/madkoding/neuro-bitnet/actions)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://madkoding.github.io/neuro-bitnet/)
+[![CI](https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml/badge.svg)](https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/neuro-cli.svg)](https://crates.io/crates/neuro-cli)
+[![License](https://img.shields.io/crates/l/neuro-cli.svg)](LICENSE-MIT)
 
-RAG Server inteligente con clasificación automática de consultas para modelos LLM cuantizados.
+🌐 **[Documentation](https://madkoding.github.io/neuro-bitnet/)** | **[Documentación en Español](https://madkoding.github.io/neuro-bitnet/es/)**
 
-## ✨ Características
+A high-performance **RAG (Retrieval Augmented Generation)** server written in Rust with **BitNet 1.58-bit** local inference. Features intelligent query classification, native embeddings, and CPU-only inference using Microsoft's BitNet models.
 
-- 🧠 **Clasificación Inteligente**: Detecta automáticamente el tipo de consulta
-- 🔍 **RAG Selectivo**: Solo usa RAG cuando mejora la precisión (+33% en factuales)
-- 📊 **Múltiples Embeddings**: Soporte para MiniLM y MPNet
-- 🐳 **Docker Ready**: Imágenes optimizadas para GPU NVIDIA
-- 🧪 **Bien Testeado**: Suite completa de tests unitarios e integración
+## ✨ Features
 
-## 🚀 Inicio Rápido
+- 🚀 **High Performance** - Native Rust with SIMD-optimized vector operations
+- 🧠 **BitNet Inference** - Local CPU-only inference with Microsoft's 1.58-bit models
+- 📊 **Native Embeddings** - Built-in embedding models via fastembed (no external services)
+- 🔍 **Semantic Search** - Fast cosine similarity search with ndarray
+- 🌐 **Web Search** - Wikipedia integration for knowledge augmentation
+- 🛠️ **Code Analysis** - Tree-sitter powered multi-language parsing
+- 📦 **Single Binary** - Static compilation, no runtime dependencies
 
-### Con Docker (Recomendado)
+## 🧠 BitNet Local Inference
+
+neuro-bitnet supports local inference using Microsoft's BitNet 1.58-bit models. No GPU required!
 
 ```bash
-cd docker
-docker compose up -d
+# Setup BitNet (one time)
+./scripts/setup_bitnet.sh
 
-# Verificar estado
-curl http://localhost:11435/health
+# Download a model
+neuro model download 2b
+
+# Ask questions locally
+neuro ask "What is the capital of France?"
 ```
 
-### Con Python
+### Benchmark Results
+
+| Metric | BitNet b1.58 2B-4T |
+|--------|-------------------|
+| **Pass Rate** | 100% |
+| **Model Size** | 1.1 GB |
+| **Avg Response** | 2.8s |
+| **Backend** | CPU-only |
+
+[See full benchmark report →](https://madkoding.github.io/neuro-bitnet/benchmarks)
+
+## 🚀 Installation
+
+### Pre-built Binaries
+
+Download the latest release for your platform:
 
 ```bash
-# Instalar dependencias
-pip install -r requirements.txt
+# Linux x86_64
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-linux-x86_64 -o neuro
+chmod +x neuro
+sudo mv neuro /usr/local/bin/
 
-# Iniciar servidor
-python -m src.server.rag_server
+# Linux aarch64
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-linux-aarch64 -o neuro
+chmod +x neuro
+sudo mv neuro /usr/local/bin/
+
+# macOS x86_64
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-darwin-x86_64 -o neuro
+chmod +x neuro
+sudo mv neuro /usr/local/bin/
+
+# macOS Apple Silicon
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-darwin-aarch64 -o neuro
+chmod +x neuro
+sudo mv neuro /usr/local/bin/
 ```
 
-## 📊 Uso
-
-### Hacer una consulta
+### Cargo Install
 
 ```bash
-curl -X POST http://localhost:8080/query \
+cargo install neuro-cli
+
+# With CUDA support
+cargo install neuro-cli --features cuda
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/madkoding/neuro-bitnet.git
+cd neuro-bitnet
+
+# Development build
+cargo build
+
+# Release build (optimized, static binary)
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+## 📖 Usage
+
+### CLI Commands
+
+```bash
+# Start the HTTP server
+neuro serve --port 8080
+
+# Start with persistent storage
+neuro serve --port 8080 --storage ./data
+
+# Index a directory
+neuro index ./src --recursive --include "*.rs"
+
+# Execute a query
+neuro query "What is Rust?" --storage ./data
+
+# Show storage statistics
+neuro stats --storage ./data
+
+# Classify a query
+neuro classify "Calculate 2 + 2"
+
+# Generate embeddings
+neuro embed "Hello world"
+
+# Search Wikipedia
+neuro search "Rust programming language"
+
+# Ask a question (requires BitNet/llama.cpp server)
+neuro ask "What is the capital of France?"
+
+# Ask with web search context
+neuro ask "Explain quantum computing" --web
+
+# Ask with RAG context
+neuro ask "Summarize the code" --storage ./data --timing
+```
+
+### HTTP API
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Get statistics
+curl http://localhost:8080/stats
+
+# Add a document
+curl -X POST http://localhost:8080/add \
   -H "Content-Type: application/json" \
-  -d '{"query": "¿Cuál es la capital de Francia?"}'
-```
+  -d '{"content": "Rust is a systems programming language"}'
 
-### Clasificar consulta
+# Search documents
+curl -X POST http://localhost:8080/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "programming language", "top_k": 5}'
 
-```bash
+# Classify a query
 curl -X POST http://localhost:8080/classify \
   -H "Content-Type: application/json" \
-  -d '{"query": "calcula 2 + 2"}'
+  -d '{"query": "What is 2 + 2?"}'
+
+# Execute an intelligent query
+curl -X POST http://localhost:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Rust?", "top_k": 5}'
+
+# List all documents
+curl http://localhost:8080/documents
 ```
 
-### Indexar proyecto
-
-```bash
-python -m src.cli.index_project /ruta/al/proyecto
-```
-
-## 📁 Estructura del Proyecto
+## 🏗️ Architecture
 
 ```
 neuro-bitnet/
-├── src/
-│   ├── rag/          # Módulo principal RAG
-│   │   ├── classifier.py    # Clasificación de consultas
-│   │   ├── embeddings.py    # Gestión de embeddings
-│   │   ├── storage/         # Backends de almacenamiento
-│   │   └── indexer/         # Analizadores de código
-│   ├── server/       # Servidor HTTP
-│   └── cli/          # Herramientas CLI
-├── docker/           # Configuración Docker
-├── tests/            # Tests unitarios e integración
-└── docs/             # Documentación (Jekyll/Chirpy)
+├── crates/
+│   ├── core/         # Shared types (Document, SearchResult, etc.)
+│   ├── embeddings/   # fastembed-based embedding generation
+│   ├── storage/      # Document storage (memory, file-based)
+│   ├── classifier/   # Query classification with regex patterns
+│   ├── indexer/      # Code analysis with tree-sitter
+│   ├── search/       # Web search (Wikipedia integration)
+│   ├── server/       # Axum HTTP server
+│   └── cli/          # Command-line interface
 ```
 
-## 📈 Benchmarks
+### Query Categories
 
-| Categoría | Sin RAG | Con RAG | Mejora |
-|-----------|---------|---------|--------|
-| Matemáticas | 100% | 100% | = |
-| Código | 100% | 100% | = |
-| Razonamiento | 100% | 100% | = |
-| **Factual** | **66.7%** | **100%** | **+33%** |
+The classifier automatically categorizes queries:
 
-Ver [análisis completo](https://madkoding.github.io/neuro-bitnet/benchmarks/).
+| Category | Description | Strategy |
+|----------|-------------|----------|
+| `math` | Mathematical calculations | Direct computation |
+| `code` | Programming questions | RAG search |
+| `reasoning` | Logic and analysis | RAG then LLM |
+| `tools` | Tool/function requests | Tool calling |
+| `greeting` | Casual greetings | Direct response |
+| `factual` | Factual questions | RAG then Web |
+| `conversational` | General conversation | RAG search |
 
-## 🧪 Tests
+### Embedding Models
+
+Supported models via fastembed:
+
+| Model | Dimensions | Size | Speed |
+|-------|------------|------|-------|
+| `minilm` (default) | 384 | ~90MB | Fast |
+| `bge-small` | 384 | ~133MB | Fast |
+| `bge-base` | 768 | ~436MB | Medium |
+| `bge-large` | 1024 | ~1.3GB | Slow |
+| `gte-small` | 384 | ~67MB | Fast |
+| `gte-base` | 768 | ~219MB | Medium |
+| `e5-small` | 384 | ~133MB | Fast |
+| `e5-base` | 768 | ~436MB | Medium |
+| `e5-large` | 1024 | ~1.3GB | Slow |
+
+## ⚙️ Configuration
+
+### Environment Variables
 
 ```bash
-# Ejecutar todos los tests
-pytest
-
-# Solo tests unitarios
-pytest tests/unit/
-
-# Con cobertura
-pytest --cov=src --cov-report=html
+# Server configuration
+NEURO_HOST=0.0.0.0
+NEURO_PORT=8080
+NEURO_STORAGE_PATH=/data/neuro
+NEURO_EMBEDDING_MODEL=minilm
+NEURO_LOG_LEVEL=info
 ```
 
-## 📚 Documentación
+### Storage Options
 
-Documentación completa disponible en [GitHub Pages](https://madkoding.github.io/neuro-bitnet/):
+- **Memory Storage**: Fast, ephemeral (default)
+- **File Storage**: Persistent, JSON-based
 
-- [Guía de Inicio](https://madkoding.github.io/neuro-bitnet/getting-started/)
-- [Arquitectura](https://madkoding.github.io/neuro-bitnet/architecture/)
-- [API Reference](https://madkoding.github.io/neuro-bitnet/api/)
-- [Benchmarks](https://madkoding.github.io/neuro-bitnet/benchmarks/)
+```bash
+# Use file storage
+neuro serve --storage ./data
 
-## 🛠️ Configuración
+# Use memory storage (default)
+neuro serve
+```
 
-| Variable | Descripción | Default |
-|----------|-------------|---------|
-| `RAG_SERVER_PORT` | Puerto del servidor | `8080` |
-| `RAG_LLM_URL` | URL del LLM backend | `http://localhost:11435` |
-| `RAG_EMBEDDING_MODEL` | Modelo de embeddings | `minilm` |
+## 🔧 Development
 
-## 📄 Licencia
+```bash
+# Run all tests
+cargo test
 
-MIT License - ver [LICENSE](LICENSE) para detalles.
+# Run with logging
+RUST_LOG=debug cargo run -- serve
+
+# Format code
+cargo fmt
+
+# Lint
+cargo clippy
+
+# Build documentation
+cargo doc --open
+```
+
+## 📊 Performance
+
+Benchmarks on AMD Ryzen 9 5950X (32 threads):
+
+| Operation | Time |
+|-----------|------|
+| Embedding (384 dims) | ~5ms |
+| Similarity search (10k docs) | ~2ms |
+| Query classification | ~0.1ms |
+| Document indexing | ~10ms |
+
+## 📜 License
+
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 🙏 Acknowledgments
+
+- [fastembed](https://github.com/Anush008/fastembed-rs) - Native embedding models
+- [axum](https://github.com/tokio-rs/axum) - Web framework
+- [tree-sitter](https://tree-sitter.github.io/tree-sitter/) - Code parsing
+- [ndarray](https://github.com/rust-ndarray/ndarray) - N-dimensional arrays
