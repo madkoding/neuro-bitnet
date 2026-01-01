@@ -570,15 +570,20 @@ pub async fn ask(
     stream: bool,
     auto_yes: bool,
     force_download: bool,
+    translate: bool,
     verbose: bool,
 ) -> anyhow::Result<()> {
     use neuro_storage::Storage;
-    use neuro_inference::{BitNetModel, ModelCache, DownloadOptions, get_or_download};
+    use neuro_inference::{BitNetModel, ModelCache, DownloadOptions, get_or_download, detect_language, Language};
     use std::time::Instant;
 
     init_tracing(verbose);
 
     let total_start = Instant::now();
+    
+    // Detect original language
+    let original_language = detect_language(&question);
+    let is_non_english = original_language != Language::English;
 
     // Step 1: Classify the query
     println!("{} Classifying query...", "🔍".cyan().bold());
@@ -594,6 +599,13 @@ pub async fn ask(
             classification.category,
             classification.confidence
         );
+        if is_non_english {
+            println!(
+                "  {} Detected language: {:?}",
+                "→".dimmed(),
+                original_language
+            );
+        }
     }
 
     // Step 2: Gather context
@@ -642,10 +654,8 @@ pub async fn ask(
 
     // Step 3: Resolve model path
     let resolved_model_path = if let Some(path) = model_path {
-        // User specified explicit path
         path
     } else {
-        // Use model name to get/download from cache
         let bitnet_model = BitNetModel::from_str(&model_name)
             .ok_or_else(|| anyhow::anyhow!(
                 "Unknown model '{}'. Available: 2b, large, 3b, 8b", model_name
@@ -659,7 +669,6 @@ pub async fn ask(
             force: force_download,
         };
 
-        // Check if model exists, download if needed
         if !cache.is_downloaded(bitnet_model) {
             println!(
                 "{} Model {} not found locally",
@@ -674,7 +683,7 @@ pub async fn ask(
     };
 
     // Step 4: Generate response - local or remote
-    let (answer, llm_time) = if resolved_model_path.exists() {
+    let (answer, llm_time, was_translated, translated_question) = if resolved_model_path.exists() {
         // Local inference with BitNet
         ask_local(
             &question,
@@ -685,11 +694,13 @@ pub async fn ask(
             ctx_size,
             threads,
             stream,
+            translate && is_non_english,
             verbose,
         ).await?
     } else {
         // Remote server
-        ask_remote(&question, &context, &llm_url, max_tokens, temperature).await?
+        let (ans, time) = ask_remote(&question, &context, &llm_url, max_tokens, temperature).await?;
+        (ans, time, false, None)
     };
 
     let total_time = total_start.elapsed();
@@ -699,10 +710,12 @@ pub async fn ask(
         "json" => {
             let output = serde_json::json!({
                 "question": question,
+                "translated_question": translated_question,
                 "answer": answer,
                 "category": format!("{:?}", classification.category),
                 "confidence": classification.confidence,
                 "context_used": !context_parts.is_empty(),
+                "was_translated": was_translated,
                 "timing": {
                     "classification_ms": classify_time.as_millis(),
                     "context_ms": context_time.as_millis(),
@@ -747,9 +760,10 @@ async fn ask_local(
     ctx_size: u32,
     threads: Option<i32>,
     stream: bool,
+    translate: bool,
     verbose: bool,
-) -> anyhow::Result<(String, std::time::Duration)> {
-    use neuro_inference::{InferenceConfig, InferenceModel, GenerateOptions, SamplerConfig};
+) -> anyhow::Result<(String, std::time::Duration, bool, Option<String>)> {
+    use neuro_inference::{InferenceConfig, InferenceModel, GenerateOptions, SamplerConfig, translate_to_english, detect_language, Language};
     use std::time::Instant;
 
     println!(
@@ -760,64 +774,74 @@ async fn ask_local(
 
     let llm_start = Instant::now();
 
-    // Build config
-    let mut config = InferenceConfig::new(&model_path)
-        .with_context_size(ctx_size);
+    // Prepare variables for blocking task
+    let question_owned = question.to_string();
+    let context_owned = context.to_string();
+    let model_path_clone = model_path.clone();
+    
+    // Do all work in a single blocking task
+    let (answer, was_translated, translated_q) = tokio::task::spawn_blocking(move || -> anyhow::Result<(String, bool, Option<String>)> {
+        // Build config
+        let mut config = InferenceConfig::new(&model_path_clone)
+            .with_context_size(ctx_size);
 
-    if let Some(t) = threads {
-        config = config.with_threads(t);
-    }
+        if let Some(t) = threads {
+            config = config.with_threads(t);
+        }
 
-    // Load model (this is blocking, so we spawn a blocking task)
-    let model = tokio::task::spawn_blocking(move || InferenceModel::load(config))
-        .await??;
+        // Load model
+        let model = InferenceModel::load(config)?;
 
-    if verbose {
-        println!(
-            "  {} Using backend: {}",
-            "→".dimmed(),
-            model.backend_name()
-        );
-    }
+        if verbose {
+            eprintln!("  Using backend: {}", model.backend_name());
+        }
 
-    // Build prompt with context
-    let prompt = if context.is_empty() {
-        format!(
-            "You are a helpful assistant. Answer the following question concisely and accurately.\n\n\
-             Question: {}\n\n\
-             Answer:",
-            question
-        )
-    } else {
-        format!(
-            "You are a helpful assistant. Use the following context to answer the question.\n\n\
-             Context:\n{}\n\n\
-             Question: {}\n\n\
-             Answer:",
-            context, question
-        )
-    };
+        // Step 1: If translate enabled, translate question to English using dictionary
+        let (effective_question, was_translated, translated_q) = if translate {
+            let lang = detect_language(&question_owned);
+            if lang == Language::Spanish {
+                eprintln!("🌐 Translating to English...");
+                let english_question = translate_to_english(&question_owned);
+                
+                if verbose {
+                    eprintln!("  {} → {}", question_owned, english_question);
+                }
+                
+                (english_question.clone(), true, Some(english_question))
+            } else {
+                (question_owned.clone(), false, None)
+            }
+        } else {
+            (question_owned.clone(), false, None)
+        };
 
-    println!("{} Generating response...", "✨".cyan().bold());
+        // Step 2: Build prompt with context
+        let prompt = if context_owned.is_empty() {
+            format!("Q: {}\nA:", effective_question)
+        } else {
+            format!("Context:\n{}\n\nQ: {}\nA:", context_owned, effective_question)
+        };
 
-    // Generate options
-    let options = GenerateOptions::new(max_tokens)
-        .with_sampler(SamplerConfig::default().with_temperature(temperature))
-        .with_stop_sequence("\n\nQuestion:")
-        .with_stop_sequence("\n\nUser:");
+        eprintln!("✨ Generating response...");
 
-    let options_with_stream = GenerateOptions {
-        stream,
-        ..options
-    };
+        // Generate options
+        let options = GenerateOptions::new(max_tokens)
+            .with_sampler(SamplerConfig::default().with_temperature(temperature))
+            .with_stop_sequence("\n\n")
+            .with_stop_sequence("\nQ:")
+            .with_stop_sequence("\nQuestion:")
+            .with_stop_sequence("Follow-up")
+            .with_stop_sequence("Solution:")
+            .with_stream(stream);
 
-    // Generate response (blocking)
-    let answer = tokio::task::spawn_blocking(move || model.generate(&prompt, &options_with_stream))
-        .await??;
+        let answer = model.generate(&prompt, &options)?;
+        
+        Ok((answer.trim().to_string(), was_translated, translated_q))
+    }).await??;
 
     let llm_time = llm_start.elapsed();
 
-    Ok((answer.trim().to_string(), llm_time))
+    Ok((answer, llm_time, was_translated, translated_q))
 }
 
 /// Ask using remote LLM server

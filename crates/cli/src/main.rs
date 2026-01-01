@@ -85,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
             stream,
             yes,
             force_download,
+            translate,
         } => {
             neuro_cli::commands::ask(
                 question,
@@ -102,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
                 stream,
                 yes,
                 force_download,
+                translate,
                 cli.verbose,
             )
             .await?;

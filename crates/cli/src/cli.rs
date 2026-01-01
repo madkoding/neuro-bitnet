@@ -208,6 +208,10 @@ pub enum Commands {
         /// Force download even if model exists
         #[arg(long)]
         force_download: bool,
+
+        /// Auto-translate Spanish queries to English for better accuracy
+        #[arg(long)]
+        translate: bool,
     },
 
     /// Manage BitNet models (list, download, remove)
