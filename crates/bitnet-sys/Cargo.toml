@@ -1,0 +1,22 @@
+[package]
+name = "bitnet-sys"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Low-level FFI bindings to bitnet.cpp (Microsoft's BitNet 1.58-bit inference runtime)"
+links = "bitnet"
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cmake = "0.1"
+bindgen = "0.70"
+cc = "1.0"
+
+[features]
+default = []
+# Enable CUDA support for GPU inference
+cuda = []
