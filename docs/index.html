@@ -4,59 +4,223 @@ icon: fas fa-home
 order: 1
 ---
 
-# Welcome to neuro-bitnet
+<div class="hero-section" style="text-align: center; padding: 2rem 0; margin-bottom: 2rem;">
+  <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">🧠 neuro-bitnet</h1>
+  <p style="font-size: 1.2rem; color: #6c757d; margin-bottom: 1rem;">High-Performance RAG Server with BitNet 1.58-bit Local Inference</p>
+  <p style="font-size: 1rem; color: #6c757d; font-style: italic;">Servidor RAG de Alto Rendimiento con Inferencia Local BitNet 1.58-bit</p>
+  
+  <div style="margin: 1.5rem 0;">
+    <a href="https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml"><img src="https://github.com/madkoding/neuro-bitnet/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://crates.io/crates/neuro-cli"><img src="https://img.shields.io/crates/v/neuro-cli.svg" alt="Crates.io"></a>
+    <a href="https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE-MIT"><img src="https://img.shields.io/crates/l/neuro-cli.svg" alt="License"></a>
+  </div>
+</div>
 
-A high-performance **RAG (Retrieval Augmented Generation)** server written in Rust with **BitNet 1.58-bit** local inference support.
+---
 
-## ✨ Features
+## 🌟 What is neuro-bitnet? / ¿Qué es neuro-bitnet?
 
-- 🚀 **High Performance** - Native Rust with SIMD-optimized vector operations
-- 🧠 **BitNet Inference** - Local CPU-only inference with Microsoft's 1.58-bit models
-- 📊 **Native Embeddings** - Built-in embedding models via fastembed
-- 🔍 **Semantic Search** - Fast cosine similarity search
-- 🌐 **Web Search** - Wikipedia integration for knowledge augmentation
-- 📦 **Single Binary** - Static compilation, no runtime dependencies
+**neuro-bitnet** is a complete ecosystem for local AI inference, combining **RAG (Retrieval Augmented Generation)** with **Microsoft's BitNet 1.58-bit models**. Written entirely in Rust for maximum performance, it runs on **CPU only** — no GPU required.
 
-## 🚀 Quick Start
+**neuro-bitnet** es un ecosistema completo para inferencia de IA local, combinando **RAG (Retrieval Augmented Generation)** con los **modelos BitNet 1.58-bit de Microsoft**. Escrito completamente en Rust para máximo rendimiento, funciona **solo con CPU** — no requiere GPU.
+
+---
+
+## ✨ Key Features / Características Principales
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin: 1.5rem 0;">
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>🚀 High Performance / Alto Rendimiento</h4>
+<p>Native Rust with SIMD-optimized vector operations. Single static binary with no runtime dependencies.</p>
+<p><em>Rust nativo con operaciones vectoriales SIMD. Binario estático sin dependencias en runtime.</em></p>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>🧠 BitNet 1.58-bit Inference</h4>
+<p>Local CPU-only inference using Microsoft's revolutionary ternary quantization. Models as small as 1.1GB.</p>
+<p><em>Inferencia local solo CPU usando la cuantización ternaria revolucionaria de Microsoft. Modelos desde 1.1GB.</em></p>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>📊 Native Embeddings</h4>
+<p>Built-in embedding models via fastembed. No external API calls needed.</p>
+<p><em>Modelos de embeddings integrados via fastembed. Sin llamadas a APIs externas.</em></p>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>🔍 Semantic Search / Búsqueda Semántica</h4>
+<p>Fast cosine similarity search with ndarray. Wikipedia integration for knowledge augmentation.</p>
+<p><em>Búsqueda rápida por similitud coseno. Integración con Wikipedia para aumentar conocimiento.</em></p>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>🛠️ Code Analysis / Análisis de Código</h4>
+<p>Tree-sitter powered multi-language parsing (Python, JavaScript, TypeScript, Rust).</p>
+<p><em>Parsing multi-lenguaje con tree-sitter (Python, JavaScript, TypeScript, Rust).</em></p>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px;">
+<h4>🌍 Multilingual / Multilingüe</h4>
+<p>Auto-translation of Spanish queries to English for improved accuracy (56% → 100%).</p>
+<p><em>Auto-traducción de consultas en español a inglés para mejor precisión (56% → 100%).</em></p>
+</div>
+
+</div>
+
+---
+
+## 🏗️ Architecture / Arquitectura
+
+neuro-bitnet provides three main interfaces for different use cases:
+
+neuro-bitnet proporciona tres interfaces principales para diferentes casos de uso:
+
+| Component | Description | Descripción |
+|-----------|-------------|-------------|
+| **`neuro` CLI** | Immediate command execution | Ejecución inmediata de comandos |
+| **`neuro-daemon`** | Background HTTP server (OpenAI-compatible API) | Servidor HTTP en background (API compatible OpenAI) |
+| **`neuro-mcp`** | IDE integration via Model Context Protocol | Integración IDE via Model Context Protocol |
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Applications                       │
+│              (CLI, IDE, HTTP Clients, Scripts)              │
+└─────────────────┬───────────────┬───────────────┬───────────┘
+                  │               │               │
+          ┌───────▼───────┐ ┌─────▼─────┐ ┌───────▼───────┐
+          │   neuro CLI   │ │  Daemon   │ │  MCP Server   │
+          │  (immediate)  │ │  (HTTP)   │ │   (stdio)     │
+          └───────┬───────┘ └─────┬─────┘ └───────┬───────┘
+                  │               │               │
+          ┌───────▼───────────────▼───────────────▼───────┐
+          │              Core Services                     │
+          │  ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+          │  │Inference │ │Embeddings│ │Classifier│       │
+          │  │ (BitNet) │ │(fastembed)│ │ (regex)  │       │
+          │  └──────────┘ └──────────┘ └──────────┘       │
+          │  ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+          │  │ Storage  │ │  Search  │ │ Indexer  │       │
+          │  │(file/mem)│ │(Wikipedia)│ │(tree-sit)│       │
+          │  └──────────┘ └──────────┘ └──────────┘       │
+          └───────────────────────────────────────────────┘
+```
+
+---
+
+## 📊 Benchmark Results / Resultados de Benchmark
+
+| Metric / Métrica | BitNet b1.58 2B-4T |
+|------------------|-------------------|
+| **Pass Rate / Tasa de Éxito** | 100% |
+| **Model Size / Tamaño del Modelo** | 1.1 GB |
+| **Avg Response / Respuesta Promedio** | 2.8s |
+| **Backend** | CPU-only |
+| **Spanish Translation Accuracy** | 56% → 100% |
+
+[📈 See full benchmark report / Ver reporte completo →](/neuro-bitnet/posts/bitnet-benchmark-results/)
+
+---
+
+## 🚀 Quick Start / Inicio Rápido
+
+### Installation / Instalación
 
 ```bash
-# Install
+# Option 1: Pre-built binary / Binario pre-compilado
+curl -L https://github.com/madkoding/neuro-bitnet/releases/latest/download/neuro-linux-x86_64 -o neuro
+chmod +x neuro && sudo mv neuro /usr/local/bin/
+
+# Option 2: Cargo install
 cargo install neuro-cli
 
-# Setup BitNet
+# Option 3: Build from source / Compilar desde código fuente
+git clone https://github.com/madkoding/neuro-bitnet.git
+cd neuro-bitnet && cargo build --release
+```
+
+### Setup BitNet / Configurar BitNet
+
+```bash
+# Setup BitNet runtime (one time / una sola vez)
 ./scripts/setup_bitnet.sh
 
-# Download model
+# Download model / Descargar modelo
 neuro model download 2b
+```
 
-# Ask questions
+### Usage Examples / Ejemplos de Uso
+
+```bash
+# Ask questions / Hacer preguntas
 neuro ask "What is the capital of France?"
+
+# Spanish queries (auto-translated) / Consultas en español (auto-traducidas)
+neuro ask "¿Cuál es la capital de Francia?" --translate
+
+# Start daemon server / Iniciar servidor daemon
+neuro-daemon --foreground
+
+# IDE integration / Integración IDE
+neuro-mcp --model ~/.cache/neuro-bitnet/models/bitnet-2b.gguf
 ```
 
-## 📊 Benchmark Results
+---
 
-| Metric | BitNet b1.58 2B-4T |
-|--------|-------------------|
-| **Pass Rate** | 100% |
-| **Model Size** | 1.1 GB |
-| **Avg Response** | 2.8s |
-| **Backend** | CPU-only |
+## 📚 Documentation / Documentación
 
-## 🏗️ Architecture
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0;">
 
-```
-┌─────────────────┐
-│   neuro-cli     │  CLI Interface
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌───────┐ ┌───────┐
-│  RAG  │ │BitNet │  Inference
-└───┬───┘ └───┬───┘
-    │         │
-    ▼         ▼
-┌───────┐ ┌───────┐
-│Storage│ │ GGUF  │  Models
-└───────┘ └───────┘
-```
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>📖 Getting Started</h4>
+<a href="/neuro-bitnet/posts/getting-started/">English</a> | 
+<a href="/neuro-bitnet/posts/getting-started-es/">Español</a>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>🔌 API Reference</h4>
+<a href="/neuro-bitnet/posts/api-reference/">English</a> | 
+<a href="/neuro-bitnet/posts/api-reference-es/">Español</a>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>🖥️ Daemon Server</h4>
+<a href="/neuro-bitnet/posts/daemon-server-guide/">English</a> | 
+<a href="/neuro-bitnet/posts/daemon-server-guide-es/">Español</a>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>🔗 MCP Integration</h4>
+<a href="/neuro-bitnet/posts/mcp-integration-guide/">English</a> | 
+<a href="/neuro-bitnet/posts/mcp-integration-guide-es/">Español</a>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>🏛️ Architecture</h4>
+<a href="/neuro-bitnet/posts/architecture-overview/">English</a> | 
+<a href="/neuro-bitnet/posts/architecture-overview-es/">Español</a>
+</div>
+
+<div style="padding: 1rem; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+<h4>🧠 Local Inference</h4>
+<a href="/neuro-bitnet/posts/local-inference-guide/">English</a> | 
+<a href="/neuro-bitnet/posts/local-inference-guide-es/">Español</a>
+</div>
+
+</div>
+
+---
+
+## 🤝 Contributing / Contribuir
+
+We welcome contributions! See our [Contributing Guide](https://github.com/madkoding/neuro-bitnet/blob/main/CONTRIBUTING.md) for details.
+
+¡Las contribuciones son bienvenidas! Consulta nuestra [Guía de Contribución](https://github.com/madkoding/neuro-bitnet/blob/main/CONTRIBUTING.md) para más detalles.
+
+---
+
+## 📜 License / Licencia
+
+Dual-licensed under [MIT](https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE-MIT) and [Apache 2.0](https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE-APACHE).
+
+Licencia dual bajo [MIT](https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE-MIT) y [Apache 2.0](https://github.com/madkoding/neuro-bitnet/blob/main/LICENSE-APACHE).
