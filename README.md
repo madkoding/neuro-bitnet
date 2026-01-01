@@ -131,7 +131,89 @@ neuro ask "Explain quantum computing" --web
 
 # Ask with RAG context
 neuro ask "Summarize the code" --storage ./data --timing
+
+# Ask in Spanish (auto-translate)
+neuro ask "¿Qué es la programación funcional?" --translate
 ```
+
+### Daemon Server
+
+Run a background inference server with OpenAI-compatible API:
+
+```bash
+# Start the daemon (default port 11435)
+neuro-daemon --foreground
+
+# With custom port and model
+neuro-daemon --port 8000 --model /path/to/model.gguf --foreground
+
+# Disable auto-translation
+neuro-daemon --auto-translate false --foreground
+
+# Use as systemd service (daemonize)
+neuro-daemon --pid-file /var/run/neuro-daemon.pid
+```
+
+#### Daemon API
+
+```bash
+# Health check
+curl http://localhost:11435/health
+
+# Generate text (OpenAI-compatible)
+curl -X POST http://localhost:11435/v1/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is Rust?", "max_tokens": 256}'
+
+# Chat completion (OpenAI-compatible)
+curl -X POST http://localhost:11435/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Explain quantum computing"}],
+    "max_tokens": 512
+  }'
+
+# Spanish query (auto-translated)
+curl -X POST http://localhost:11435/v1/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "¿Cuál es la capital de Francia?"}'
+```
+
+### MCP Server (IDE Integration)
+
+The MCP (Model Context Protocol) server enables IDE integration:
+
+```bash
+# Run MCP server (uses stdio transport)
+neuro-mcp --model /path/to/model.gguf
+
+# With debug logging
+neuro-mcp --debug
+```
+
+#### VS Code Configuration
+
+Add to your VS Code settings (`.vscode/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "neuro-bitnet": {
+      "command": "neuro-mcp",
+      "args": ["--model", "/path/to/model.gguf"]
+    }
+  }
+}
+```
+
+#### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `generate` | Generate text from a prompt (supports Spanish) |
+| `translate` | Translate text to English |
+| `ask` | Ask a question with optional context |
+| `summarize` | Summarize text |
 
 ### HTTP API
 
@@ -177,9 +259,91 @@ neuro-bitnet/
 │   ├── classifier/   # Query classification with regex patterns
 │   ├── indexer/      # Code analysis with tree-sitter
 │   ├── search/       # Web search (Wikipedia integration)
-│   ├── server/       # Axum HTTP server
-│   └── cli/          # Command-line interface
+│   ├── inference/    # BitNet inference (native FFI + subprocess)
+│   ├── bitnet-sys/   # Low-level FFI bindings to bitnet.cpp
+│   ├── server/       # Axum HTTP server (RAG API)
+│   ├── cli/          # Command-line interface (immediate execution)
+│   ├── daemon/       # Background HTTP server for inference
+│   └── mcp/          # Model Context Protocol server for IDE integration
 ```
+
+### Components
+
+- **CLI (`neuro`)**: Immediate command execution for queries, indexing, and model management
+- **Daemon (`neuro-daemon`)**: Background HTTP server with OpenAI-compatible API
+- **MCP Server (`neuro-mcp`)**: IDE integration via Model Context Protocol (VS Code, etc.)
+
+### Multilingual Support
+
+All components support queries in Spanish (auto-translated to English):
+
+```bash
+# CLI with translation
+neuro ask "¿Cuál es la capital de Francia?" --translate
+
+# Daemon auto-translates
+curl -X POST http://localhost:11435/v1/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "¿Qué es Rust?"}'
+```
+
+## 🔗 Native Bindings
+
+neuro-bitnet supports two inference backends for BitNet models:
+
+### Backend Types
+
+| Backend | Feature Flag | Description | Performance |
+|---------|--------------|-------------|-------------|
+| **Native FFI** | `--features native` | Direct bindings to bitnet.cpp | ~50-70% faster |
+| **Subprocess** | `--features subprocess` (default) | Calls `llama-cli` binary | Works out of the box |
+
+### Building with Native Bindings
+
+Native bindings compile bitnet.cpp from source for maximum performance:
+
+```bash
+# Requirements (Linux)
+sudo apt-get install cmake clang libstdc++-12-dev
+
+# Clone with submodules
+git clone --recursive https://github.com/madkoding/neuro-bitnet.git
+cd neuro-bitnet
+
+# Initialize BitNet submodule (if not cloned with --recursive)
+git submodule update --init --recursive
+cd vendor/BitNet && git submodule update --init --recursive && cd ../..
+
+# Build with native bindings
+cargo build --release --features native
+
+# Or use auto-selection (tries native first, falls back to subprocess)
+cargo build --release
+```
+
+### Selecting Backend at Runtime
+
+```rust
+use neuro_inference::{InferenceConfig, InferenceModel, BackendType};
+
+// Auto-select best backend
+let config = InferenceConfig::new("model.gguf");
+let model = InferenceModel::load(config)?;
+
+// Force specific backend
+let config = InferenceConfig::new("model.gguf")
+    .with_backend(BackendType::Native);
+let model = InferenceModel::load(config)?;
+```
+
+### Performance Comparison
+
+| Backend | Avg Response Time | Notes |
+|---------|-------------------|-------|
+| Subprocess | ~2800ms | Creates new process per request |
+| Native FFI | ~800-1200ms | Reuses context pool, direct FFI |
+
+Native bindings use a context pool for concurrent requests, reducing latency significantly for high-throughput scenarios.
 
 ### Query Categories
 
