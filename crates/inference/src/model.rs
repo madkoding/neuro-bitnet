@@ -1,13 +1,21 @@
 //! Main inference model implementation for BitNet 1.58-bit models
 //!
-//! Uses subprocess backend (llama-cli from bitnet.cpp) for inference.
+//! Supports multiple backends: native FFI (fastest) and subprocess (fallback).
 
+use crate::backend::{BackendType, InferenceBackend};
 use crate::error::{InferenceError, Result};
 use crate::sampler::SamplerConfig;
-use crate::subprocess::SubprocessBackend;
+use crate::translation::{detect_language, build_translation_prompt, Language};
 use std::io::{self, Write};
 use std::path::Path;
-use tracing::info;
+use std::sync::Arc;
+use tracing::{info, warn, debug};
+
+#[cfg(feature = "subprocess")]
+use crate::subprocess::SubprocessBackend;
+
+#[cfg(feature = "native")]
+use crate::native::{NativeBackend, ModelParams, PoolConfig, ContextParams};
 
 /// Configuration for loading inference models
 #[derive(Debug, Clone)]
@@ -24,6 +32,10 @@ pub struct InferenceConfig {
     pub use_mmap: bool,
     /// Use memory locking (default: false)
     pub use_mlock: bool,
+    /// Backend type to use
+    pub backend: BackendType,
+    /// Context pool size (for native backend)
+    pub pool_size: Option<usize>,
 }
 
 impl Default for InferenceConfig {
@@ -35,6 +47,8 @@ impl Default for InferenceConfig {
             n_threads_batch: None,
             use_mmap: true,
             use_mlock: false,
+            backend: BackendType::Auto,
+            pool_size: None,
         }
     }
 }
@@ -58,6 +72,18 @@ impl InferenceConfig {
     pub fn with_threads(mut self, threads: i32) -> Self {
         self.n_threads = Some(threads);
         self.n_threads_batch = Some(threads);
+        self
+    }
+
+    /// Set backend type
+    pub fn with_backend(mut self, backend: BackendType) -> Self {
+        self.backend = backend;
+        self
+    }
+
+    /// Set context pool size (for native backend)
+    pub fn with_pool_size(mut self, size: usize) -> Self {
+        self.pool_size = Some(size);
         self
     }
 }
@@ -122,9 +148,9 @@ impl GenerateOptions {
 
 /// High-level inference model wrapper for BitNet
 /// 
-/// Uses llama-cli from bitnet.cpp as the inference backend.
+/// Supports multiple backends: native FFI (fastest) and subprocess (fallback).
 pub struct InferenceModel {
-    backend: SubprocessBackend,
+    backend: Arc<dyn InferenceBackend>,
     #[allow(dead_code)]
     config: InferenceConfig,
 }
@@ -132,10 +158,115 @@ pub struct InferenceModel {
 impl InferenceModel {
     /// Load a model from a GGUF file
     /// 
-    /// Requires the bitnet.cpp llama-cli binary to be installed.
-    /// Set BITNET_CLI_PATH environment variable or run scripts/setup_bitnet.sh.
+    /// Automatically selects the best available backend:
+    /// 1. Native FFI (if compiled with `native` feature)
+    /// 2. Subprocess (fallback, requires llama-cli binary)
     pub fn load(config: InferenceConfig) -> Result<Self> {
-        info!("Initializing BitNet inference backend...");
+        Self::load_with_backend(config.clone(), config.backend)
+    }
+
+    /// Load with a specific backend type
+    pub fn load_with_backend(config: InferenceConfig, backend_type: BackendType) -> Result<Self> {
+        let backend: Arc<dyn InferenceBackend> = match backend_type {
+            BackendType::Native => {
+                #[cfg(feature = "native")]
+                {
+                    Self::create_native_backend(&config)?
+                }
+                #[cfg(not(feature = "native"))]
+                {
+                    return Err(InferenceError::InvalidConfig(
+                        "Native backend not available (compile with --features native)".to_string()
+                    ));
+                }
+            }
+            BackendType::Subprocess => {
+                #[cfg(feature = "subprocess")]
+                {
+                    Self::create_subprocess_backend(&config)?
+                }
+                #[cfg(not(feature = "subprocess"))]
+                {
+                    return Err(InferenceError::InvalidConfig(
+                        "Subprocess backend not available (compile with --features subprocess)".to_string()
+                    ));
+                }
+            }
+            BackendType::Auto => {
+                // Try native first, fall back to subprocess
+                #[cfg(feature = "native")]
+                {
+                    match Self::create_native_backend(&config) {
+                        Ok(backend) => backend,
+                        Err(e) => {
+                            warn!("Native backend failed: {}, trying subprocess...", e);
+                            #[cfg(feature = "subprocess")]
+                            {
+                                Self::create_subprocess_backend(&config)?
+                            }
+                            #[cfg(not(feature = "subprocess"))]
+                            {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+                #[cfg(not(feature = "native"))]
+                {
+                    #[cfg(feature = "subprocess")]
+                    {
+                        Self::create_subprocess_backend(&config)?
+                    }
+                    #[cfg(not(feature = "subprocess"))]
+                    {
+                        return Err(InferenceError::InvalidConfig(
+                            "No backend available (compile with --features subprocess or --features native)".to_string()
+                        ));
+                    }
+                }
+            }
+        };
+
+        info!("Loaded model with backend: {}", backend.name());
+        Ok(Self { backend, config })
+    }
+
+    /// Create native backend
+    #[cfg(feature = "native")]
+    fn create_native_backend(config: &InferenceConfig) -> Result<Arc<dyn InferenceBackend>> {
+        use crate::native;
+        
+        if !native::is_available() {
+            return Err(InferenceError::InvalidConfig(
+                "Native bindings not available (bitnet-sys build failed)".to_string()
+            ));
+        }
+
+        let model_params = ModelParams {
+            use_mmap: config.use_mmap,
+            use_mlock: config.use_mlock,
+            ..Default::default()
+        };
+
+        let n_threads = config.n_threads.unwrap_or(4);
+        let ctx_params = ContextParams::default()
+            .with_context_size(config.n_ctx)
+            .with_threads(n_threads);
+
+        let pool_config = if let Some(pool_size) = config.pool_size {
+            PoolConfig::with_sizes(pool_size.min(2), pool_size).with_context_params(ctx_params)
+        } else {
+            PoolConfig::default().with_context_params(ctx_params)
+        };
+
+        let backend = NativeBackend::new(&config.model_path, model_params, pool_config)?;
+        Ok(Arc::new(backend))
+    }
+
+    /// Create subprocess backend
+    #[cfg(feature = "subprocess")]
+    fn create_subprocess_backend(config: &InferenceConfig) -> Result<Arc<dyn InferenceBackend>> {
+        info!("Initializing BitNet subprocess backend...");
         
         let mut backend = SubprocessBackend::new(&config.model_path)?
             .with_context_size(config.n_ctx);
@@ -145,10 +276,11 @@ impl InferenceModel {
         }
 
         info!("BitNet model ready: {}", config.model_path);
-        Ok(Self { backend, config })
+        Ok(Arc::new(backend))
     }
 
-    /// Load with a specific binary path
+    /// Load with a specific binary path (subprocess only)
+    #[cfg(feature = "subprocess")]
     pub fn load_with_binary<P1: AsRef<Path>, P2: AsRef<Path>>(
         binary_path: P1,
         model_path: P2,
@@ -163,22 +295,26 @@ impl InferenceModel {
             backend = backend.with_threads(threads);
         }
 
-        Ok(Self { backend, config })
+        Ok(Self { 
+            backend: Arc::new(backend), 
+            config 
+        })
     }
 
     /// Generate text from a prompt
     pub fn generate(&self, prompt: &str, options: &GenerateOptions) -> Result<String> {
         if options.stream {
             let mut output = String::new();
+            let mut callback = |token: &str| {
+                print!("{}", token);
+                io::stdout().flush().ok();
+                output.push_str(token);
+            };
             self.backend.generate_streaming(
                 prompt,
                 options.max_tokens,
                 &options.sampler,
-                |token| {
-                    print!("{}", token);
-                    io::stdout().flush().ok();
-                    output.push_str(token);
-                },
+                &mut callback,
             )?;
             println!();
             
@@ -204,12 +340,26 @@ impl InferenceModel {
 
     /// Get the backend type being used
     pub fn backend_name(&self) -> &'static str {
-        "bitnet.cpp (subprocess)"
+        self.backend.name()
     }
 
     /// Check if the backend is available
+    #[cfg(feature = "subprocess")]
     pub fn is_available() -> bool {
         SubprocessBackend::is_available()
+    }
+
+    /// Check if the backend is available
+    #[cfg(not(feature = "subprocess"))]
+    pub fn is_available() -> bool {
+        #[cfg(feature = "native")]
+        {
+            crate::native::is_available()
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            false
+        }
     }
 
     /// Get binary version
@@ -227,6 +377,74 @@ impl InferenceModel {
             }
         }
         result.trim().to_string()
+    }
+
+    /// Generate text with automatic translation for non-English queries
+    /// 
+    /// Flow:
+    /// 1. Detect language
+    /// 2. If not English, translate to English using BitNet
+    /// 3. Get answer in English
+    /// 4. Return answer (optionally translate back)
+    /// 
+    /// Returns (response, original_language, was_translated)
+    pub fn generate_translated(&self, prompt: &str, options: &GenerateOptions) -> Result<(String, Language, bool)> {
+        let lang = detect_language(prompt);
+        
+        if lang == Language::English {
+            let response = self.generate(prompt, options)?;
+            return Ok((response, Language::English, false));
+        }
+
+        // Step 1: Translate question to English using BitNet
+        let translate_prompt = build_translation_prompt(prompt);
+        let translate_options = GenerateOptions::new(100)
+            .with_temperature(0.1);  // Low temp for accurate translation
+        
+        let english_question = self.generate(&translate_prompt, &translate_options)?;
+        let english_question = english_question.trim().to_string();
+        
+        debug!("Translated '{}' -> '{}'", prompt, english_question);
+
+        // Step 2: Get answer in English (more accurate for factual questions)
+        let response = self.generate(&english_question, options)?;
+        
+        Ok((response, lang, true))
+    }
+
+    /// Chat with automatic translation for non-English queries
+    pub fn chat_translated(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+        options: &GenerateOptions,
+    ) -> Result<(String, Language, bool)> {
+        let lang = detect_language(user_message);
+        
+        if lang == Language::English {
+            let response = self.chat(system_prompt, user_message, options)?;
+            return Ok((response, Language::English, false));
+        }
+
+        // Translate user message to English
+        let translate_prompt = build_translation_prompt(user_message);
+        let translate_options = GenerateOptions::new(100)
+            .with_temperature(0.1);
+        
+        let english_message = self.generate(&translate_prompt, &translate_options)?;
+        let english_message = english_message.trim().to_string();
+        
+        debug!("Translated '{}' -> '{}'", user_message, english_message);
+
+        // Get response with translated message
+        let response = self.chat(system_prompt, &english_message, options)?;
+        
+        Ok((response, lang, true))
+    }
+
+    /// Check if a query is in Spanish
+    pub fn is_spanish(&self, query: &str) -> bool {
+        detect_language(query) == Language::Spanish
     }
 }
 

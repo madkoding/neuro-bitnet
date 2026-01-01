@@ -2,11 +2,12 @@
 //!
 //! Fallback that calls the llama-cli binary directly when native bindings fail.
 
+use crate::backend::{InferenceBackend, TokenCallback};
 use crate::error::{InferenceError, Result};
 use crate::sampler::SamplerConfig;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use tracing::{debug, info, warn};
 
 /// Subprocess-based inference backend
@@ -110,8 +111,24 @@ impl SubprocessBackend {
         ))
     }
 
-    /// Generate text from a prompt
-    pub fn generate(&self, prompt: &str, max_tokens: u32, sampler: &SamplerConfig) -> Result<String> {
+    /// Check if the backend is available
+    pub fn is_available() -> bool {
+        Self::find_binary().is_ok()
+    }
+
+    /// Get binary version (internal method)
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(&self.binary_path)
+            .arg("--version")
+            .output()
+            .map_err(InferenceError::Io)?;
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+impl InferenceBackend for SubprocessBackend {
+    fn generate(&self, prompt: &str, max_tokens: u32, sampler: &SamplerConfig) -> Result<String> {
         let mut cmd = Command::new(&self.binary_path);
         
         cmd.arg("-m").arg(&self.model_path)
@@ -122,7 +139,7 @@ impl SubprocessBackend {
             .arg("--top-k").arg(sampler.top_k.to_string())
             .arg("--top-p").arg(sampler.top_p.to_string())
             .arg("--repeat-penalty").arg(sampler.repeat_penalty.to_string())
-            .arg("--no-display-prompt");  // Important: don't echo prompt
+            .arg("--no-display-prompt");
 
         if let Some(threads) = self.n_threads {
             cmd.arg("-t").arg(threads.to_string());
@@ -132,7 +149,6 @@ impl SubprocessBackend {
             cmd.arg("-s").arg(sampler.seed.to_string());
         }
 
-        // Suppress llama.cpp logging to stderr
         cmd.env("LLAMA_LOG_DISABLE", "1");
 
         debug!("Running: {:?}", cmd);
@@ -141,7 +157,7 @@ impl SubprocessBackend {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| InferenceError::Io(e))?;
+            .map_err(InferenceError::Io)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -152,22 +168,16 @@ impl SubprocessBackend {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
-        // The output with --no-display-prompt is just the generated text
         Ok(stdout.trim().to_string())
     }
 
-    /// Generate with streaming output
-    pub fn generate_streaming<F>(
+    fn generate_streaming(
         &self,
         prompt: &str,
         max_tokens: u32,
         sampler: &SamplerConfig,
-        mut on_token: F,
-    ) -> Result<String>
-    where
-        F: FnMut(&str),
-    {
+        on_token: TokenCallback<'_>,
+    ) -> Result<String> {
         let mut cmd = Command::new(&self.binary_path);
         
         cmd.arg("-m").arg(&self.model_path)
@@ -188,7 +198,7 @@ impl SubprocessBackend {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| InferenceError::Io(e))?;
+            .map_err(InferenceError::Io)?;
 
         let stdout = child.stdout.take()
             .ok_or_else(|| InferenceError::Decode("Failed to capture stdout".to_string()))?;
@@ -198,9 +208,8 @@ impl SubprocessBackend {
         let mut past_prompt = false;
 
         for line in reader.lines() {
-            let line = line.map_err(|e| InferenceError::Io(e))?;
+            let line = line.map_err(InferenceError::Io)?;
             
-            // Skip until we get past the echoed prompt
             if !past_prompt {
                 if line.contains(prompt) || output.len() < prompt.len() {
                     output.push_str(&line);
@@ -220,7 +229,7 @@ impl SubprocessBackend {
             output.push('\n');
         }
 
-        let status = child.wait().map_err(|e| InferenceError::Io(e))?;
+        let status = child.wait().map_err(InferenceError::Io)?;
         if !status.success() {
             warn!("llama-cli exited with status: {}", status);
         }
@@ -228,36 +237,30 @@ impl SubprocessBackend {
         Ok(output.trim().to_string())
     }
 
-    /// Chat format generation
-    pub fn chat(
+    fn chat(
         &self,
         system_prompt: &str,
         user_message: &str,
         max_tokens: u32,
         sampler: &SamplerConfig,
     ) -> Result<String> {
-        // Format as chat prompt
         let prompt = format!(
             "<|system|>\n{}</s>\n<|user|>\n{}</s>\n<|assistant|>\n",
             system_prompt, user_message
         );
-
         self.generate(&prompt, max_tokens, sampler)
     }
 
-    /// Check if the backend is available
-    pub fn is_available() -> bool {
-        Self::find_binary().is_ok()
+    fn name(&self) -> &'static str {
+        "bitnet.cpp (subprocess)"
     }
 
-    /// Get binary version
-    pub fn version(&self) -> Result<String> {
-        let output = Command::new(&self.binary_path)
-            .arg("--version")
-            .output()
-            .map_err(|e| InferenceError::Io(e))?;
+    fn is_ready(&self) -> bool {
+        self.binary_path.exists()
+    }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    fn version(&self) -> Result<String> {
+        self.get_version()
     }
 }
 
