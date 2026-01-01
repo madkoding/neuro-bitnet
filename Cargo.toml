@@ -9,8 +9,11 @@ members = [
     "crates/search",
     "crates/llm",
     "crates/inference",
+    "crates/bitnet-sys",
     "crates/server",
     "crates/cli",
+    "crates/daemon",
+    "crates/mcp",
 ]
 
 [workspace.package]
