@@ -65,3 +65,26 @@ jobs:
         run: cargo doc --no-deps --all-features --workspace
         env:
           RUSTDOCFLAGS: -D warnings
+
+  native-bindings:
+    name: Native Bindings (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libstdc++-12-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Initialize BitNet submodule
+        run: |
+          git submodule update --init --recursive
+          cd vendor/BitNet && git submodule update --init --recursive
+      - name: Build with native bindings
+        run: cargo build -p neuro-inference --features native --release
+        continue-on-error: true
+      - name: Test subprocess backend (fallback)
+        run: cargo test -p neuro-inference --features subprocess

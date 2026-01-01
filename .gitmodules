@@ -1,3 +1,4 @@
 [submodule "vendor/BitNet"]
 	path = vendor/BitNet
 	url = https://github.com/microsoft/BitNet.git
+	shallow = true
