@@ -1,0 +1,45 @@
+[package]
+name = "neuro-daemon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Background daemon server for neuro-bitnet inference"
+
+[[bin]]
+name = "neuro-daemon"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+neuro-inference = { path = "../inference" }
+neuro-core = { path = "../core" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# CLI for daemon config
+clap = { workspace = true, features = ["env"] }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Unix daemon
+daemonize = "0.5"
+
+# Directories
+dirs = "5"
